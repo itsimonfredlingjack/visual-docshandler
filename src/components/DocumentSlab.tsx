@@ -57,7 +57,7 @@ export function DocumentSlab({ doc, onClick, isRouting, isReviewing }: DocumentS
       tabIndex={0}
       aria-label={`${doc.name} — ${isHalted ? 'Halted, requires review' : isAnalyzing ? 'Extracting' : isRouting ? 'Routing' : doc.status}`}
       className={`material-slab relative cursor-pointer select-none focus-ring ${isHalted ? 'is-halted' : ''}`}
-      style={{ width: 520, padding: '18px 22px', transition: 'background 0.15s', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
+      style={{ width: 'min(var(--card-width), calc(100vw - var(--rail-width) - 64px))', padding: '18px 22px', transition: 'background 0.15s', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
       whileHover={{ background: isHalted ? 'rgba(245,158,11,0.04)' : 'rgba(255,255,255,0.04)' }}
       initial={{ opacity: 0, scale: 0.93, y: -24, rotateX: 5 }}
       animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0 }}

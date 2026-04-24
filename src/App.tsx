@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Layers, ArrowRight, X, Clock, Wifi, Mail, ShieldAlert, FolderInput, Paperclip, Search, Receipt, ScrollText, Sparkles } from 'lucide-react';
 import { LayoutGroup, AnimatePresence, motion } from 'framer-motion';
 import type { DocumentItem, ArchivedDocument } from './types';
@@ -48,6 +48,22 @@ const COMPARTMENTS = [
   { id: 'strategy', name: 'Strategic Archive',  docCount: 0 },
 ];
 
+function nowMs() {
+  return Date.now();
+}
+
+function shortRandomId(length = 7) {
+  return Math.random().toString(36).substring(2, 2 + length);
+}
+
+function currentTimeWithSeconds() {
+  return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function currentTimeMinute() {
+  return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
 // ─── App ───────────────────────────────────────────────────────
 function App() {
   const [riverDocs,   setRiverDocs]   = useState<DocumentItem[]>(SEED_DOCS);
@@ -62,7 +78,8 @@ function App() {
   // Retrieval palette + flying-to-stage flourish
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [paletteInitialQuery, setPaletteInitialQuery] = useState<string | null>(null);
-  const [flyingCard, setFlyingCard] = useState<{ doc: ArchivedDocument; fromRect: DOMRect | null; openedAt: number } | null>(null);
+  const [retrievedSpecimen, setRetrievedSpecimen] = useState<{ doc: ArchivedDocument; fromRect: DOMRect | null; openedAt: number } | null>(null);
+  const [clockLabel, setClockLabel] = useState(() => currentTimeMinute());
 
   const openPaletteWithQuery = (q: string | null) => {
     setPaletteInitialQuery(q);
@@ -75,36 +92,37 @@ function App() {
   };
 
   // Emit a completion event: bloom at Route station + flash destination row.
-  const markFiled = (docId: string, docName: string, destination: string) => {
+  const markFiled = useCallback((docId: string, docName: string, destination: string) => {
     const startedAt = ingestStartRef.current.get(docId);
-    const durationMs = startedAt ? Date.now() - startedAt : 0;
+    const completedAt = nowMs();
+    const durationMs = startedAt ? completedAt - startedAt : 0;
     ingestStartRef.current.delete(docId);
 
-    const completionId = Math.random().toString(36).substring(2, 9);
+    const completionId = shortRandomId();
     setRouteCompletions(prev => [...prev, {
       id: completionId,
       docId,
       docName,
       compartmentName: destination,
       durationMs,
-      createdAt: Date.now(),
+      createdAt: completedAt,
     }]);
-    setFlashDest({ name: destination, key: Date.now() });
+    setFlashDest({ name: destination, key: completedAt });
 
     setTimeout(() => {
       setRouteCompletions(prev => prev.filter(c => c.id !== completionId));
     }, 3600);
     setTimeout(() => {
-      setFlashDest(prev => (prev && prev.name === destination && Date.now() - prev.key >= 1400) ? null : prev);
+      setFlashDest(prev => (prev && prev.name === destination && nowMs() - prev.key >= 1400) ? null : prev);
     }, 1500);
-  };
+  }, []);
 
   // ── Intake handler ──────────────────────────────────────────
   const handleIntake = (scenario: 'perfect' | 'uncertain') => {
     const isPerf = scenario === 'perfect';
-    const nowStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const nowStr = currentTimeWithSeconds();
     const newDoc: DocumentItem = {
-      id: Math.random().toString(36).substring(7),
+      id: shortRandomId(),
       name: isPerf ? 'Q4_Projections_Approved.pdf' : 'Untitled_Scan_994.pdf',
       type: 'PDF',
       source: isPerf ? 'Local' : 'Email',
@@ -114,7 +132,7 @@ function App() {
     };
 
     setRiverDocs(prev => [...prev, newDoc]);
-    ingestStartRef.current.set(newDoc.id, Date.now());
+    ingestStartRef.current.set(newDoc.id, nowMs());
 
     // Pipeline timing: intake (1.2s) → extract (2s) → route (1.5s) → filed
     // Slow enough to actually see the story across stations.
@@ -137,7 +155,7 @@ function App() {
           setRiverDocs(prev => prev.map(d => d.id === newDoc.id ? {
             ...d,
             status: 'uncertain',
-            haltedAt: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            haltedAt: currentTimeWithSeconds(),
             extractedTags: ['Unknown Format', 'Unsigned'],
             explanation: {
               confidence: 42,
@@ -189,7 +207,7 @@ function App() {
   const handleForceRoute = (docId: string, destination: string) => {
     const doc = riverDocs.find(d => d.id === docId);
     const docName = doc?.name ?? 'Document';
-    ingestStartRef.current.set(docId, Date.now());
+    ingestStartRef.current.set(docId, nowMs());
     setRiverDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'routing', destination } : d));
     setSelectedDocId(null);
     setDrawerDismissed(false);
@@ -200,10 +218,10 @@ function App() {
   };
 
   // ── Resolve-action handler (verbs that address the halt itself) ─
-  const handleResolve = (docId: string, verb: 'request-sig' | 'mark-exception') => {
+  const handleResolve = useCallback((docId: string, verb: 'request-sig' | 'mark-exception') => {
     const doc = riverDocs.find(d => d.id === docId);
     const docName = doc?.name ?? 'Document';
-    ingestStartRef.current.set(docId, Date.now());
+    ingestStartRef.current.set(docId, nowMs());
 
     if (verb === 'request-sig') {
       setRiverDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'analyzing' } : d));
@@ -230,11 +248,16 @@ function App() {
         markFiled(docId, docName, 'Project Ledger');
       }, 700);
     }
-  };
+  }, [markFiled, riverDocs]);
 
   // ── Keyboard shortcuts ──────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (isPaletteOpen) return;
+      if (e.key === 'Escape' && retrievedSpecimen) {
+        setRetrievedSpecimen(null);
+        return;
+      }
       if (e.key === 'Escape' && reviewOpen) {
         setDrawerDismissed(true);
       }
@@ -245,7 +268,12 @@ function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [reviewOpen, reviewDoc]);
+  }, [handleResolve, isPaletteOpen, reviewOpen, reviewDoc, retrievedSpecimen]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockLabel(currentTimeMinute()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Global ⌘K / Ctrl+K → toggle retrieval palette
   useEffect(() => {
@@ -262,19 +290,12 @@ function App() {
   // Retrieval: user picks a doc → palette closes + flying card takes over
   const handleRetrievalSelect = (doc: ArchivedDocument, rect: DOMRect | null) => {
     setIsPaletteOpen(false);
-    setFlyingCard({ doc, fromRect: rect, openedAt: Date.now() });
+    setRetrievedSpecimen({ doc, fromRect: rect, openedAt: nowMs() });
   };
-
-  // Auto-dismiss the flying card after a moment
-  useEffect(() => {
-    if (!flyingCard) return;
-    const t = setTimeout(() => setFlyingCard(null), 3800);
-    return () => clearTimeout(t);
-  }, [flyingCard]);
 
   // ─────────────────────────────────────────────────────────────
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#0A0A0A' }}>
+    <div className={`app-shell ${reviewOpen ? 'has-review' : ''} ${retrievedSpecimen ? 'has-retrieval' : ''}`}>
 
       {/* ════════ HEADER ════════════════════════════════════════ */}
       <header className="app-header">
@@ -321,7 +342,7 @@ function App() {
       </header>
 
       {/* ════════ BODY: rail + stage ════════════════════════════ */}
-      <div className="app-body" style={{ flex: 1, overflow: 'hidden' }}>
+      <div className="app-body">
 
         {/* ── Left intake rail ── */}
         <IntakeRail
@@ -340,17 +361,10 @@ function App() {
 
         {/* ── Stage ── */}
         <LayoutGroup>
-          <div className="stage">
+          <div className={`stage ${reviewOpen ? 'has-review' : ''} ${retrievedSpecimen ? 'has-retrieval' : ''}`}>
 
             {/* Pipeline track — the flow-lane docs travel through */}
-            <div style={{
-              position: 'absolute',
-              top: 0, left: 0,
-              right: reviewOpen ? 440 : 0,
-              transition: 'right 0.4s ease',
-              zIndex: 20,
-              pointerEvents: 'none',
-            }}>
+            <div className="pipeline-region">
               <PipelineTrack stations={stations} haltedStationId={haltedStation} completions={routeCompletions} />
             </div>
 
@@ -362,7 +376,6 @@ function App() {
                 animate={{
                   opacity: 1,
                   scaleY: 1,
-                  left: reviewOpen ? 'calc((100% - 440px) * 0.625 + 0px)' : '62.5%',
                   height: reviewOpen ? 160 : 200,
                 }}
                 transition={{ duration: 0.5 }}
@@ -372,57 +385,28 @@ function App() {
 
 
             {/* Stage floor glow — blue ambient (always), amber in halt */}
-            <div style={{
-              position: 'absolute', inset: 0,
-              background: reviewOpen
-                ? 'radial-gradient(ellipse 900px 520px at 40% 55%, rgba(245,158,11,0.06) 0%, rgba(245,158,11,0.02) 40%, transparent 75%)'
-                : 'radial-gradient(ellipse 600px 400px at 50% 50%, rgba(59,130,246,0.03) 0%, transparent 70%)',
-              pointerEvents: 'none',
-              transition: 'background 1s ease',
-            }} />
+            <div className="stage-floor-glow" />
 
             {/* Stage vignette — darkens top + bottom edges, focuses on card zone */}
-            <div style={{
-              position: 'absolute', inset: 0,
-              background: 'linear-gradient(180deg, rgba(0,0,0,0.35) 0%, transparent 18%, transparent 82%, rgba(0,0,0,0.35) 100%)',
-              pointerEvents: 'none',
-              opacity: reviewOpen ? 1 : 0.4,
-              transition: 'opacity 0.8s ease',
-              zIndex: 2,
-            }} />
+            <div className="stage-vignette" />
 
             {/* Card ↔ drawer tether — amber gradient wash deepening toward drawer */}
             <AnimatePresence>
               {reviewOpen && (
                 <motion.div
-                  key="tether"
+                  key="drawer-wash"
+                  className="stage-drawer-wash"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.4 }}
-                  style={{
-                    position: 'absolute',
-                    top: 0, bottom: 0, right: 440,
-                    width: 340,
-                    background: 'linear-gradient(to right, transparent 0%, rgba(245,158,11,0.015) 40%, rgba(245,158,11,0.05) 100%)',
-                    pointerEvents: 'none',
-                    zIndex: 1,
-                  }}
                 />
               )}
             </AnimatePresence>
 
             {/* Observation frame — corner brackets (specimen under examination) */}
             <div
-              className={`obs-frame ${reviewOpen ? 'is-halted' : ''}`}
-              style={{
-                position: 'absolute',
-                top: 'calc(50% + 55px)', left: reviewOpen ? 'calc(50% - 220px)' : '50%',
-                transform: 'translate(-50%, -50%)',
-                width: 600, height: 420,
-                pointerEvents: 'none',
-                transition: 'left 0.5s ease',
-              }}
+              className={`obs-frame stage-obs-frame ${reviewOpen ? 'is-halted' : ''}`}
             >
               <span className="obs-bracket tl" />
               <span className="obs-bracket tr" />
@@ -433,15 +417,10 @@ function App() {
 
             {/* ── Active document on stage ── */}
             <motion.div
-              style={{
-                position: 'absolute',
-                top: 110, left: 0, right: 0, bottom: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                zIndex: 10,
-              }}
+              className="stage-workspace"
               animate={{
-                paddingRight: reviewOpen ? 440 : 0,
                 scale: reviewOpen ? 0.96 : 1,
+                opacity: retrievedSpecimen ? 0.62 : 1,
               }}
               transition={{ type: 'spring', stiffness: 260, damping: 28 }}
             >
@@ -523,37 +502,41 @@ function App() {
               </AnimatePresence>
             </motion.div>
 
-            {/* ════ RETRIEVED SPECIMEN LANDING (flying-to-stage flourish) ════ */}
-            {flyingCard && (
+            {/* ════ RETRIEVED SPECIMEN LANDING ════ */}
+            {retrievedSpecimen && (
               <motion.div
-                key={`flying-${flyingCard.doc.id}-${flyingCard.openedAt}`}
-                className="retrieval-card-frame is-landing"
-                initial={flyingCard.fromRect ? {
-                  position: 'fixed',
-                  left: flyingCard.fromRect.left,
-                  top: flyingCard.fromRect.top,
-                  width: flyingCard.fromRect.width,
-                  height: flyingCard.fromRect.height,
-                  opacity: 0.92,
-                } : { opacity: 0 }}
+                key={`retrieved-${retrievedSpecimen.doc.id}-${retrievedSpecimen.openedAt}`}
+                className="retrieved-specimen-panel"
+                initial={{ opacity: 0, scale: 0.96, y: 12 }}
                 animate={{
-                  position: 'fixed',
-                  left: 'calc(50% + 140px)',
-                  top: '50%',
-                  x: '-50%',
-                  y: '-50%',
-                  width: 600,
-                  height: 'auto',
                   opacity: 1,
+                  scale: 1,
+                  y: 0,
                 }}
+                exit={{ opacity: 0, scale: 0.98 }}
                 transition={{ type: 'spring', stiffness: 220, damping: 26 }}
-                style={{ zIndex: 30 }}
               >
                 <span className="obs-bracket tl" />
                 <span className="obs-bracket tr" />
                 <span className="obs-bracket bl" />
                 <span className="obs-bracket br" />
-                <SpecimenCard doc={flyingCard.doc} />
+                <div className="retrieved-specimen-header">
+                  <div>
+                    <div className="retrieved-specimen-kicker">Retrieved content</div>
+                    <h2>{retrievedSpecimen.doc.name}</h2>
+                    <p>{retrievedSpecimen.doc.compartment} · {retrievedSpecimen.doc.source} · filed {retrievedSpecimen.doc.filedAt}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="util-btn-close focus-ring retrieved-specimen-close"
+                    aria-label="Close retrieved content"
+                    onClick={() => setRetrievedSpecimen(null)}
+                  >
+                    <X size={14} />
+                    <span>Esc</span>
+                  </button>
+                </div>
+                <SpecimenCard doc={retrievedSpecimen.doc} />
               </motion.div>
             )}
 
@@ -562,25 +545,11 @@ function App() {
               {reviewOpen && reviewDoc && (
                 <motion.aside
                   key="drawer"
+                  className="review-drawer"
                   initial={{ x: 460 }}
                   animate={{ x: 0 }}
                   exit={{ x: 460 }}
                   transition={{ type: 'spring', stiffness: 340, damping: 30 }}
-                  style={{
-                    position: 'absolute', top: 0, right: 0, bottom: 0,
-                    width: 440,
-                    background: `
-                      linear-gradient(135deg, rgba(245,158,11,0.035) 0%, transparent 28%),
-                      linear-gradient(180deg, rgba(255,255,255,0.015) 0%, transparent 20%),
-                      rgba(8,8,8,0.94)
-                    `,
-                    backdropFilter: 'blur(40px)',
-                    WebkitBackdropFilter: 'blur(40px)',
-                    borderLeft: '1px solid rgba(245,158,11,0.22)',
-                    display: 'flex', flexDirection: 'column',
-                    zIndex: 40,
-                    boxShadow: '-32px 0 64px -16px rgba(0,0,0,0.9), -12px 0 40px -8px rgba(245,158,11,0.12), inset 1px 0 0 rgba(245,158,11,0.08)',
-                  }}
                 >
                   {/* Drawer inner scroll area */}
                   <div style={{ flex: 1, overflowY: 'auto', padding: '28px 28px 28px' }}>
@@ -847,17 +816,20 @@ function App() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Clock size={10} />
-          <span>{new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+          <span>{clockLabel}</span>
         </div>
       </footer>
 
       {/* ════════ RETRIEVAL PALETTE (⌘K) ═════════════════════════ */}
-      <RetrievalPalette
-        isOpen={isPaletteOpen}
-        initialQuery={paletteInitialQuery}
-        onClose={() => setIsPaletteOpen(false)}
-        onSelect={handleRetrievalSelect}
-      />
+      {isPaletteOpen && (
+        <RetrievalPalette
+          key={`palette-${paletteInitialQuery ?? 'blank'}`}
+          isOpen={isPaletteOpen}
+          initialQuery={paletteInitialQuery}
+          onClose={() => setIsPaletteOpen(false)}
+          onSelect={handleRetrievalSelect}
+        />
+      )}
     </div>
   );
 }

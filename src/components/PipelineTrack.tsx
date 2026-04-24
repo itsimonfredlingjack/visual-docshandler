@@ -28,7 +28,7 @@ interface PipelineTrackProps {
 const STATE_COLORS = {
   idle:   { dot: 'rgba(255,255,255,0.2)', glow: 'transparent', label: '#71717a' },
   active: { dot: '#3b82f6',                glow: 'rgba(59,130,246,0.4)', label: '#93c5fd' },
-  halted: { dot: '#f59e0b',                glow: 'rgba(245,158,11,0.5)', label: '#fbbf24' },
+  halted: { dot: '#d6b16b',                glow: 'rgba(245,158,11,0.24)', label: '#d6b16b' },
   done:   { dot: '#34d399',                glow: 'rgba(52,211,153,0.3)', label: '#86efac' },
 };
 

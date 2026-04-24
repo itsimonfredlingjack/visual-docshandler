@@ -32,7 +32,7 @@ export function IntakeRail({ onIntake, haltedCount, recentDocs, selectedDocId, c
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <span className="rail-section">Intake</span>
           {haltedCount > 0 && (
-            <span style={{ fontSize: 11, color: '#fbbf24', fontWeight: 600, fontFamily: 'Geist, sans-serif' }}>
+            <span style={{ fontSize: 11, color: '#d6b16b', fontWeight: 600, fontFamily: 'Geist, sans-serif' }}>
               {haltedCount} halted
             </span>
           )}
@@ -155,7 +155,7 @@ export function IntakeRail({ onIntake, haltedCount, recentDocs, selectedDocId, c
                   </div>
                   <span style={{
                     fontSize: 10.5,
-                    color: doc.status === 'uncertain' ? '#fbbf24' : 'var(--text-tertiary)',
+                    color: doc.status === 'uncertain' ? '#d6b16b' : 'var(--text-tertiary)',
                     flexShrink: 0,
                     fontWeight: doc.status === 'uncertain' ? 600 : 500,
                     fontFamily: 'Geist, sans-serif',

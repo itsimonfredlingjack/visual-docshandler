@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Search, CornerDownLeft } from 'lucide-react';
 import type { ArchivedDocument } from '../types';
 import { ARCHIVE, matchArchive, recentArchive } from '../data/archiveFixtures';
@@ -14,7 +14,7 @@ interface RetrievalPaletteProps {
 const SUGGESTIONS = ['acme nda', 'q4 projections', 'invoices this month'];
 
 export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: RetrievalPaletteProps) {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery ?? '');
   const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -24,19 +24,20 @@ export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: Re
     : recentArchive(4, ARCHIVE);
 
   const hasQuery = query.trim().length > 0;
-  const selected = results[Math.min(selectedIdx, results.length - 1)] ?? null;
+  const safeSelectedIdx = Math.min(selectedIdx, Math.max(0, results.length - 1));
+  const selected = results[safeSelectedIdx] ?? null;
+
+  const openSelected = useCallback(() => {
+    if (!selected) return;
+    const rect = cardRef.current?.getBoundingClientRect() ?? null;
+    onSelect(selected, rect);
+  }, [onSelect, selected]);
 
   useEffect(() => {
     if (isOpen) {
-      setQuery(initialQuery ?? '');
-      setSelectedIdx(0);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [isOpen, initialQuery]);
-
-  useEffect(() => {
-    if (selectedIdx >= results.length) setSelectedIdx(Math.max(0, results.length - 1));
-  }, [results.length, selectedIdx]);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -52,13 +53,12 @@ export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: Re
         setSelectedIdx(i => Math.max(i - 1, 0));
       } else if (e.key === 'Enter' && selected) {
         e.preventDefault();
-        const rect = cardRef.current?.getBoundingClientRect() ?? null;
-        onSelect(selected, rect);
+        openSelected();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isOpen, onClose, onSelect, results.length, selected]);
+  }, [isOpen, onClose, openSelected, results.length, selected]);
 
   if (!isOpen) return null;
 
@@ -93,8 +93,13 @@ export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: Re
                     <div className="retrieval-section-label util-microtype">RECENT</div>
                     <ResultList
                       results={results}
-                      selectedIdx={selectedIdx}
+                      selectedIdx={safeSelectedIdx}
                       onHover={setSelectedIdx}
+                      onChoose={(doc, i) => {
+                        setSelectedIdx(i);
+                        const rect = cardRef.current?.getBoundingClientRect() ?? null;
+                        onSelect(doc, rect);
+                      }}
                     />
                     <div className="retrieval-section-label util-microtype" style={{ marginTop: 14 }}>TRY ASKING</div>
                     <div className="retrieval-suggestions">
@@ -118,8 +123,13 @@ export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: Re
                     </div>
                     <ResultList
                       results={results}
-                      selectedIdx={selectedIdx}
+                      selectedIdx={safeSelectedIdx}
                       onHover={setSelectedIdx}
+                      onChoose={(doc, i) => {
+                        setSelectedIdx(i);
+                        const rect = cardRef.current?.getBoundingClientRect() ?? null;
+                        onSelect(doc, rect);
+                      }}
                     />
                   </>
                 )}
@@ -141,6 +151,20 @@ export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: Re
                     <span className="obs-bracket tr" />
                     <span className="obs-bracket bl" />
                     <span className="obs-bracket br" />
+                    <div className="retrieval-preview-toolbar">
+                      <div>
+                        <div className="retrieval-preview-kicker">Content preview</div>
+                        <div className="retrieval-preview-title">{selected.compartment}</div>
+                      </div>
+                      <button
+                        type="button"
+                        className="retrieval-open-stage focus-ring"
+                        onClick={openSelected}
+                      >
+                        Open in stage
+                        <CornerDownLeft size={12} />
+                      </button>
+                    </div>
                     <SpecimenCard doc={selected} />
                   </div>
                 ) : (
@@ -161,21 +185,27 @@ export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: Re
   );
 }
 
-function ResultList({ results, selectedIdx, onHover }: {
+function ResultList({ results, selectedIdx, onHover, onChoose }: {
   results: ArchivedDocument[];
   selectedIdx: number;
   onHover: (i: number) => void;
+  onChoose: (doc: ArchivedDocument, i: number) => void;
 }) {
   return (
     <ul className="retrieval-list">
       {results.map((r, i) => (
-        <li
-          key={r.id}
-          className={`retrieval-list-row${i === selectedIdx ? ' is-selected' : ''}`}
-          onMouseEnter={() => onHover(i)}
-        >
-          <div className="retrieval-list-row-name">{r.name}</div>
-          <div className="retrieval-list-row-meta">{r.compartment} · {r.docType}</div>
+        <li key={r.id}>
+          <button
+            type="button"
+            className={`retrieval-list-row focus-ring${i === selectedIdx ? ' is-selected' : ''}`}
+            onMouseEnter={() => onHover(i)}
+            onFocus={() => onHover(i)}
+            onClick={() => onChoose(r, i)}
+          >
+            <span className="retrieval-list-row-name">{r.name}</span>
+            <span className="retrieval-list-row-summary">{r.summary}</span>
+            <span className="retrieval-list-row-meta">{r.compartment} · {r.docType}</span>
+          </button>
         </li>
       ))}
     </ul>
