@@ -16,12 +16,6 @@ function isHaltTag(tag: string) {
   return HALT_TAGS.some(h => tag.toLowerCase().includes(h.toLowerCase()));
 }
 
-// Severity color palette
-const SEVERITY = {
-  critical: { text: '#fbbf24', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.25)' },
-  warning:  { text: 'rgba(251,191,36,0.75)', bg: 'rgba(251,191,36,0.05)', border: 'rgba(251,191,36,0.15)' },
-};
-
 // Provide a human-readable source provenance string
 function formatProvenance(doc: DocumentItem) {
   const timeStr = doc.receivedAt || new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
@@ -101,8 +95,8 @@ export function DocumentSlab({ doc, onClick, isRouting, isReviewing }: DocumentS
             <div style={{
               padding: 8,
               borderRadius: 8,
-              background: isHalted ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.04)',
-              color: isHalted ? '#fbbf24' : 'rgba(255,255,255,0.3)',
+              background: isHalted ? 'rgba(214,177,107,0.07)' : 'rgba(255,255,255,0.04)',
+              color: isHalted ? '#d6b16b' : 'rgba(255,255,255,0.3)',
               flexShrink: 0,
             }}>
               <FileText size={20} />
@@ -117,7 +111,7 @@ export function DocumentSlab({ doc, onClick, isRouting, isReviewing }: DocumentS
                 <span className="sep">·</span>
                 <span className="val">{doc.type}</span>
                 <span className="sep">·</span>
-                <span style={{ color: isHalted ? '#fbbf24' : 'var(--text-secondary)' }}>
+                <span className={`slab-classification ${isAnalyzing ? 'is-processing' : ''}`}>
                   {isHalted ? 'Legal contract' : isAnalyzing ? 'Classifying…' : 'Document'}
                 </span>
               </div>
@@ -214,24 +208,14 @@ export function DocumentSlab({ doc, onClick, isRouting, isReviewing }: DocumentS
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {doc.extractedTags.map((tag, i) => {
-                const isError = isHalted && isHaltTag(tag);
+                const isBlocking = isHalted && isHaltTag(tag);
                 return (
                   <motion.span
                     key={tag}
+                    className={`entity-chip ${isBlocking ? 'is-blocking' : 'is-neutral'}`}
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.12, duration: 0.25 }}
-                    style={{
-                      fontSize: 12,
-                      fontFamily: 'monospace',
-                      letterSpacing: '0.04em',
-                      padding: '4px 10px',
-                      borderRadius: 5,
-                      fontWeight: 500,
-                      color: isError ? SEVERITY.critical.text : SEVERITY.warning.text,
-                      background: isError ? SEVERITY.critical.bg : SEVERITY.warning.bg,
-                      border: `1px solid ${isError ? SEVERITY.critical.border : SEVERITY.warning.border}`,
-                    }}
                   >
                     {tag}
                   </motion.span>
@@ -246,12 +230,8 @@ export function DocumentSlab({ doc, onClick, isRouting, isReviewing }: DocumentS
           {trail.map((step, i) => (
             <div key={step.label} style={{ display: 'flex', alignItems: 'center' }}>
               <div className={`process-trail-step ${step.done && !step.error ? 'done' : ''} ${step.error ? 'error' : ''}`}>
-                <span style={{
-                  width: 7, height: 7, borderRadius: '50%', flexShrink: 0, display: 'inline-block',
-                  background: step.error ? '#f59e0b' : step.done ? '#71717a' : '#27272a',
-                  boxShadow: step.error ? '0 0 8px rgba(245,158,11,0.5)' : 'none',
-                }} />
-                {step.error ? `✗ ${step.label} Blocked` : step.label}
+                <span className={`process-trail-dot ${step.error ? 'is-error' : step.done ? 'is-done' : ''}`} />
+                {step.error ? `x ${step.label} Blocked` : step.label}
               </div>
               {i < trail.length - 1 && (
                 <div className={`process-trail-connector ${trail[i+1].error ? 'error' : ''}`} />

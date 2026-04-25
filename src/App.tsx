@@ -376,7 +376,7 @@ function App() {
                 animate={{
                   opacity: 1,
                   scaleY: 1,
-                  height: reviewOpen ? 160 : 200,
+                  height: reviewOpen ? 140 : 180,
                 }}
                 transition={{ duration: 0.5 }}
                 style={{ transformOrigin: 'top center' }}
@@ -420,6 +420,7 @@ function App() {
               className="stage-workspace"
               animate={{
                 scale: reviewOpen ? 0.96 : 1,
+                y: activeDocs.length > 0 ? -28 : 0,
                 opacity: retrievedSpecimen ? 0.62 : 1,
               }}
               transition={{ type: 'spring', stiffness: 260, damping: 28 }}
@@ -803,20 +804,26 @@ function App() {
       </div>
 
       {/* ════════ STATUS BAR ══════════════════════════════════ */}
-      <footer className="status-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <footer className="status-bar" aria-label="System telemetry">
+        <div className="status-telemetry-group">
+          <span className="status-telemetry-item status-connection">
             <Wifi size={10} />
             <span>Connected</span>
           </span>
-          <span className="dot-sep">·</span>
-          <span>{riverDocs.length} documents processed</span>
-          <span className="dot-sep">·</span>
-          <span>{filedDocs.length} filed</span>
+          <span className="dot-sep" aria-hidden="true">·</span>
+          <span className="status-telemetry-item">
+            <span className="status-label">Docs</span>
+            <span className="status-value">{riverDocs.length}</span>
+          </span>
+          <span className="dot-sep" aria-hidden="true">·</span>
+          <span className="status-telemetry-item">
+            <span className="status-label">Filed</span>
+            <span className="status-value">{filedDocs.length}</span>
+          </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div className="status-telemetry-item status-clock">
           <Clock size={10} />
-          <span>{clockLabel}</span>
+          <span className="status-value">{clockLabel}</span>
         </div>
       </footer>
 

@@ -41,7 +41,7 @@ export function IntakeRail({ onIntake, haltedCount, recentDocs, selectedDocId, c
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
           <button
             onClick={() => onIntake('perfect')}
-            className="w-full flex items-center justify-between group transition-all duration-150 focus-ring"
+            className="rail-primary-action w-full flex items-center justify-between group transition-all duration-150 focus-ring"
             style={{
               background: 'rgba(255,255,255,0.08)',
               border: '1px solid rgba(255,255,255,0.1)',
@@ -118,7 +118,7 @@ export function IntakeRail({ onIntake, haltedCount, recentDocs, selectedDocId, c
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.06, duration: 0.2 }}
-                  className="intake-log-row"
+                  className="intake-log-row focus-ring"
                   onClick={() => doc.status === 'uncertain' && onSelectDoc(doc.id)}
                   role={doc.status === 'uncertain' ? 'button' : undefined}
                   tabIndex={doc.status === 'uncertain' ? 0 : undefined}
