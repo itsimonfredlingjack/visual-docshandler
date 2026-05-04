@@ -1,4 +1,4 @@
-import type { ArchivedDocument } from '../types';
+import type { ArchivedDocument, DocumentItem } from '../types';
 
 export const ARCHIVE: ArchivedDocument[] = [
   {
@@ -196,4 +196,74 @@ export function recentArchive(n = 4, docs: ArchivedDocument[] = ARCHIVE): Archiv
   return [...docs]
     .sort((a, b) => Date.parse(b.filedAt) - Date.parse(a.filedAt))
     .slice(0, n);
+}
+
+export function findArchiveByName(name: string): ArchivedDocument | undefined {
+  return ARCHIVE.find(d => d.name === name);
+}
+
+/**
+ * Build an ArchivedDocument-shaped preview for a doc that's still live in the
+ * pipeline (halted, in flight) and therefore has no extraction yet. Heuristic
+ * by filename so the right panel can render the page even before the AI step.
+ */
+export function previewFromLiveDoc(live: DocumentItem): ArchivedDocument {
+  const lower = live.name.toLowerCase();
+  const senderEmail = live.evidence?.sender ?? '';
+  const senderDomain = senderEmail.split('@')[1]?.split('.')[0] ?? 'counterparty';
+  const counterpartyName =
+    senderDomain.charAt(0).toUpperCase() + senderDomain.slice(1) + ' Corp.';
+
+  if (lower.includes('nda')) {
+    return {
+      id: `live-${live.id}`,
+      name: live.name,
+      docType: 'nda',
+      summary: live.evidence?.subject ?? 'Non-disclosure agreement, draft',
+      filedAt: live.receivedAt,
+      compartment: 'Pending',
+      source: live.source === 'Local' ? 'Local' : live.source,
+      fileSize: live.evidence?.fileSize ?? '— · — pages',
+      keywords: ['nda', 'draft'],
+      extraction: {
+        kind: 'nda',
+        parties: ['LiveFlow Inc.', counterpartyName],
+        effective: 'Pending countersignature',
+        term: '24 months',
+        signatories: [
+          { name: 'Simon Fredling',          party: 'LiveFlow Inc.',  signed: true  },
+          { name: 'Awaiting countersignature', party: counterpartyName, signed: false },
+        ],
+        governingLaw: 'State of Delaware, USA',
+        keyClauses: [
+          { label: 'Permitted Use',        value: 'Evaluation of partnership opportunity' },
+          { label: 'Return / Destruction', value: '30 days after termination' },
+          { label: 'Carve-outs',           value: 'Independently developed / publicly available' },
+        ],
+      },
+    };
+  }
+
+  // Generic fallback — short report-style page so something always renders.
+  return {
+    id: `live-${live.id}`,
+    name: live.name,
+    docType: 'report',
+    summary: live.evidence?.subject ?? 'Document received, awaiting classification',
+    filedAt: live.receivedAt,
+    compartment: 'Pending',
+    source: live.source === 'Local' ? 'Local' : live.source,
+    fileSize: live.evidence?.fileSize ?? '— · — pages',
+    keywords: [],
+    extraction: {
+      kind: 'report',
+      title: live.name,
+      author: live.evidence?.sender ?? live.source,
+      published: live.receivedAt,
+      abstract:
+        live.evidence?.preview ??
+        'No preview text was extracted from this document. The system is still classifying its contents.',
+      findings: [],
+    },
+  };
 }

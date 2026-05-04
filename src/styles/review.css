@@ -1,0 +1,320 @@
+/* ─── Review inspector ─── */
+.review-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--drawer-width);
+  background:
+    linear-gradient(135deg, rgba(245,158,11,0.026) 0%, transparent 28%),
+    linear-gradient(180deg, rgba(60, 50, 35,0.015) 0%, transparent 20%),
+    rgba(8,8,8,0.94);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border-left: 1px solid rgba(60, 50, 35,0.1);
+  display: flex;
+  flex-direction: column;
+  z-index: 40;
+  box-shadow:
+    -32px 0 64px -16px rgba(60, 45, 25, 0.9),
+    -12px 0 40px -8px rgba(60, 45, 25, 0.25),
+    inset 1px 0 0 rgba(60, 50, 35,0.03);
+}
+
+.review-context-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(60, 50, 35,0.08);
+  background: rgba(60, 50, 35,0.02);
+}
+
+.review-context-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review-context-label {
+  font-size: 10px;
+  line-height: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+.review-context-file {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.review-context-clear {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(60, 50, 35,0.12);
+  background: rgba(60, 50, 35,0.04);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.review-fast-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.review-fast-item {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(60, 50, 35,0.07);
+  background: rgba(60, 50, 35,0.015);
+}
+
+.review-fast-label {
+  font-size: 10px;
+  line-height: 13px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.review-fast-value {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Review drawer sections (extracted from inline styles) ─── */
+.review-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px;
+}
+
+.review-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+.review-drawer-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.review-drawer-title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+  font-family: "Geist", sans-serif;
+}
+.review-drawer-subtitle {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+.review-drawer-close {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(60, 50, 35, 0.04);
+  border: 1px solid rgba(60, 50, 35, 0.06);
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  height: 32px;
+  flex-shrink: 0;
+}
+.review-drawer-close-kbd {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--color-gray-4);
+  letter-spacing: 0.04em;
+}
+
+.review-divider {
+  height: 1px;
+  background: rgba(60, 50, 35, 0.05);
+  margin: 18px 0 22px;
+}
+.review-divider-thin {
+  height: 1px;
+  background: rgba(60, 50, 35, 0.04);
+  margin-bottom: 20px;
+}
+
+/* Why it halted — amber-washed callout block */
+.review-halt-block {
+  background: rgba(245, 158, 11, 0.035);
+  border: 1px solid rgba(245, 158, 11, 0.14);
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 22px;
+}
+.review-halt-block .drawer-section-title {
+  color: var(--color-amber-text);
+}
+.review-halt-reason {
+  font-size: 13.5px;
+  color: var(--text-primary);
+  line-height: 1.55;
+  margin-bottom: 14px;
+}
+
+/* Confidence bar */
+.review-confidence-track {
+  position: relative;
+  height: 5px;
+  background: rgba(60, 50, 35, 0.06);
+  border-radius: 3px;
+  margin-bottom: 8px;
+  margin-top: 6px;
+}
+.review-confidence-meter {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #ef4444 0%, #f59e0b 100%);
+  border-radius: 3px;
+}
+.review-confidence-threshold {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  background: #a1a1aa;
+  border-radius: 1px;
+}
+.review-confidence-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.review-confidence-label {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.review-confidence-value {
+  font-size: 11.5px;
+}
+.review-confidence-pct {
+  color: var(--color-amber-text);
+  font-weight: 600;
+}
+
+/* Evidence block inside the drawer */
+.review-evidence-body {
+  margin-top: 10px;
+  background: rgba(60, 50, 35, 0.02);
+  border: 1px solid rgba(60, 50, 35, 0.06);
+  border-radius: 10px;
+  padding: 14px;
+}
+.review-evidence-grid {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  row-gap: 7px;
+  column-gap: 10px;
+  margin-bottom: 10px;
+}
+.review-evidence-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: "Geist", sans-serif;
+}
+.review-evidence-value {
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--text-secondary);
+}
+.review-evidence-value-subject {
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.review-evidence-preview {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.review-evidence-attachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(60, 50, 35, 0.04);
+}
+.review-evidence-attachment-name {
+  font-size: 11.5px;
+  font-family: monospace;
+  color: var(--text-secondary);
+}
+
+.review-resolve-section {
+  margin-bottom: 20px;
+}
+.review-resolve-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drawer-details {
+  border: 1px solid rgba(60, 50, 35,0.08);
+  border-radius: 9px;
+  background: rgba(60, 50, 35,0.015);
+  padding: 8px 10px;
+}
+
+.drawer-details summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawer-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.drawer-details[open] {
+  border-color: rgba(60, 50, 35,0.12);
+  background: rgba(60, 50, 35,0.02);
+}
+

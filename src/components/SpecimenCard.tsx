@@ -13,11 +13,65 @@ const TYPE_META: Record<ArchivedDocument['docType'], { label: string; Icon: type
 
 interface SpecimenCardProps {
   doc: ArchivedDocument;
+  compact?: boolean;
 }
 
-export function SpecimenCard({ doc }: SpecimenCardProps) {
+type QuickFact = {
+  label: string;
+  value: string;
+};
+
+function quickFacts(extraction: DocExtraction): QuickFact[] {
+  switch (extraction.kind) {
+    case 'nda': {
+      const signedCount = extraction.signatories.filter(s => s.signed).length;
+      return [
+        { label: 'Parties', value: extraction.parties.slice(0, 2).join(' · ') },
+        { label: 'Term', value: extraction.term },
+        { label: 'Signatures', value: `${signedCount}/${extraction.signatories.length} signed` },
+      ];
+    }
+    case 'invoice':
+      return [
+        { label: 'Vendor', value: extraction.vendor },
+        { label: 'Amount', value: extraction.amount },
+        { label: 'Due', value: extraction.due },
+      ];
+    case 'projections': {
+      const leadMetric = extraction.metrics[0];
+      return [
+        { label: 'Period', value: extraction.period },
+        { label: 'Prepared by', value: extraction.preparedBy },
+        { label: leadMetric?.label ?? 'Metric', value: leadMetric?.value ?? 'n/a' },
+      ];
+    }
+    case 'report':
+      return [
+        { label: 'Author', value: extraction.author },
+        { label: 'Published', value: extraction.published },
+        { label: 'Findings', value: `${extraction.findings.length}` },
+      ];
+    case 'mou':
+      return [
+        { label: 'Parties', value: extraction.parties.slice(0, 2).join(' · ') },
+        { label: 'Effective', value: extraction.effective },
+        { label: 'Commitments', value: `${extraction.commitments.length}` },
+      ];
+    case 'compliance': {
+      const highCount = extraction.findings.filter(f => f.severity === 'high').length;
+      return [
+        { label: 'Framework', value: extraction.framework },
+        { label: 'Period', value: extraction.period },
+        { label: 'High findings', value: `${highCount}` },
+      ];
+    }
+  }
+}
+
+export function SpecimenCard({ doc, compact = false }: SpecimenCardProps) {
   const meta = TYPE_META[doc.docType];
   const Icon = meta.Icon;
+  const quick = quickFacts(doc.extraction);
 
   return (
     <div className="specimen-card">
@@ -30,9 +84,28 @@ export function SpecimenCard({ doc }: SpecimenCardProps) {
         <p className="specimen-card-summary">{doc.summary}</p>
       </div>
 
-      <div className="specimen-card-body">
-        <ExtractionBody extraction={doc.extraction} />
-      </div>
+      {compact ? (
+        <div className="specimen-card-body specimen-card-body-compact">
+          <div className="spec-quick-facts">
+            {quick.map((item) => (
+              <div key={item.label} className="spec-quick-fact">
+                <span className="spec-quick-label">{item.label}</span>
+                <span className="spec-quick-value">{item.value}</span>
+              </div>
+            ))}
+          </div>
+          <details className="specimen-details">
+            <summary>Show extracted fields</summary>
+            <div className="specimen-details-body">
+              <ExtractionBody extraction={doc.extraction} />
+            </div>
+          </details>
+        </div>
+      ) : (
+        <div className="specimen-card-body">
+          <ExtractionBody extraction={doc.extraction} />
+        </div>
+      )}
 
       <div className="specimen-card-source">
         <Paperclip size={11} color="#71717a" />
@@ -41,8 +114,9 @@ export function SpecimenCard({ doc }: SpecimenCardProps) {
           {doc.fileSize} · {doc.source} · filed {doc.filedAt}
         </span>
         <button
-          className="specimen-card-source-open"
+          className="specimen-card-source-open focus-ring"
           title="Original attached — not rendered in prototype"
+          aria-label="View original attachment"
           type="button"
           onClick={(e) => e.stopPropagation()}
         >

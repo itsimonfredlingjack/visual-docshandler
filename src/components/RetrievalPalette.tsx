@@ -11,13 +11,12 @@ interface RetrievalPaletteProps {
   onSelect: (doc: ArchivedDocument, rect: DOMRect | null) => void;
 }
 
-const SUGGESTIONS = ['acme nda', 'q4 projections', 'invoices this month'];
-
 export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: RetrievalPaletteProps) {
   const [query, setQuery] = useState(initialQuery ?? '');
   const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const paletteRef = useRef<HTMLDivElement>(null);
 
   const results = query.trim()
     ? matchArchive(query, ARCHIVE)
@@ -39,26 +38,52 @@ export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: Re
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+  const handlePaletteKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const isTextEntry = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (e.key === 'Tab' && paletteRef.current) {
+      const tabbables = Array.from(
+        paletteRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter(el => !el.hasAttribute('disabled'));
+
+      if (tabbables.length === 0) return;
+      const first = tabbables[0];
+      const last = tabbables[tabbables.length - 1];
+
+      if (!e.shiftKey && document.activeElement === last) {
         e.preventDefault();
-        onClose();
-      } else if (e.key === 'ArrowDown') {
+        first.focus();
+      } else if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
-        setSelectedIdx(i => Math.min(i + 1, results.length - 1));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIdx(i => Math.max(i - 1, 0));
-      } else if (e.key === 'Enter' && selected) {
-        e.preventDefault();
-        openSelected();
+        last.focus();
       }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [isOpen, onClose, openSelected, results.length, selected]);
+      return;
+    }
+
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && (isTextEntry || target.classList.contains('retrieval-list-row'))) {
+      e.preventDefault();
+      if (e.key === 'ArrowDown') {
+        setSelectedIdx(i => Math.min(i + 1, results.length - 1));
+      } else {
+        setSelectedIdx(i => Math.max(i - 1, 0));
+      }
+      return;
+    }
+
+    if (e.key === 'Enter' && selected && (target === inputRef.current || target.classList.contains('retrieval-list-row'))) {
+      e.preventDefault();
+      openSelected();
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -68,10 +93,16 @@ export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: Re
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        ref={paletteRef}
         className="retrieval-palette"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="retrieval-title"
         onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={handlePaletteKeyDown}
       >
             <div className="retrieval-header">
+              <h2 id="retrieval-title" className="sr-only">Retrieval palette</h2>
               <Search size={15} color="#71717a" />
               <input
                 ref={inputRef}
@@ -82,6 +113,7 @@ export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: Re
                 placeholder="Retrieve a document or ask a question…"
                 autoComplete="off"
                 spellCheck={false}
+                aria-label="Retrieve a document or ask a question"
               />
               <span className="retrieval-kbd">ESC</span>
             </div>
@@ -101,19 +133,6 @@ export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: Re
                         onSelect(doc, rect);
                       }}
                     />
-                    <div className="retrieval-section-label util-microtype" style={{ marginTop: 14 }}>TRY ASKING</div>
-                    <div className="retrieval-suggestions">
-                      {SUGGESTIONS.map(s => (
-                        <button
-                          key={s}
-                          type="button"
-                          className="retrieval-suggestion"
-                          onClick={() => { setQuery(s); setSelectedIdx(0); inputRef.current?.focus(); }}
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
                   </>
                 )}
                 {hasQuery && results.length > 0 && (
@@ -165,7 +184,7 @@ export function RetrievalPalette({ isOpen, initialQuery, onClose, onSelect }: Re
                         <CornerDownLeft size={12} />
                       </button>
                     </div>
-                    <SpecimenCard doc={selected} />
+                    <SpecimenCard doc={selected} compact />
                   </div>
                 ) : (
                   <div className="retrieval-card-empty">

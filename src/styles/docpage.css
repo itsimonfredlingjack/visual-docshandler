@@ -1,0 +1,568 @@
+/* ══════════════════════════════════════════════════════════════
+   DocumentPagePreview — the rendered page that appears in the
+   right panel. The document IS the answer. Editorial serif body,
+   warm cream paper, halt-state amber overlay. Distinct from the
+   surrounding LiveFlow chrome (Geist/Mono) by design — the page
+   has its own typographic voice, like a real document scanned
+   into the workbench.
+   ══════════════════════════════════════════════════════════════ */
+
+:root {
+  --paper-bg:    #f3ede0;
+  --paper-bg-edge: #e7dfcd;
+  --paper-ink:   #1a1612;
+  --paper-ink-quiet: #57514a;
+  --paper-rule:  rgba(26, 22, 18, 0.16);
+  --paper-rule-soft: rgba(26, 22, 18, 0.08);
+  --paper-amber: var(--stamp-ink);
+  --paper-amber-bg: rgba(154, 42, 29, 0.10);
+  --paper-green: var(--ink-1);
+  --paper-red: var(--stamp-ink);
+}
+
+.docpage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-family: "Iowan Old Style", "Charter", "Georgia", "Times New Roman", serif;
+  color: var(--paper-ink);
+  width: 100%;
+}
+
+.docpage-paper {
+  position: relative;
+  background:
+    radial-gradient(ellipse 700px 360px at 50% 0%, rgba(255, 245, 220, 0.45) 0%, transparent 64%),
+    linear-gradient(180deg, var(--paper-bg) 0%, var(--paper-bg-edge) 100%);
+  padding: 38px 36px 26px;
+  border-radius: 4px;
+  border: 1px solid rgba(60, 45, 25, 0.20);
+  border-top-color: rgba(60, 45, 25, 0.30);
+  box-shadow:
+    0 28px 60px -16px rgba(0, 0, 0, 0.55),
+    0 8px 20px -8px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(60, 45, 25, 0.10);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Paper grain — different SVG noise, beige-tinted */
+.docpage-paper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='paper'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.34  0 0 0 0 0.20  0 0 0 0.16 0'/></filter><rect width='100%25' height='100%25' filter='url(%23paper)'/></svg>");
+  opacity: 0.7;
+  mix-blend-mode: multiply;
+  z-index: 0;
+}
+
+/* Soft sun-spot — implies the doc is on a desk with side-light. */
+.docpage-paper::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 480px 320px at 80% 0%, rgba(255, 220, 140, 0.16) 0%, transparent 60%),
+    linear-gradient(180deg, transparent 78%, rgba(0, 0, 0, 0.05) 100%);
+  z-index: 0;
+}
+
+.docpage-paper > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Corner brackets removed — they were decoration. */
+.docpage-corner { display: none; }
+
+/* Halted document: a clean amber band on the top edge, nothing else.
+   No glow, no aura — just the same drop-shadow as a regular paper. */
+.docpage.is-halted .docpage-paper {
+  border-top: 3px solid var(--amber);
+}
+
+.docpage-halt-watermark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: clamp(48px, 9vw, 96px);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: rgba(154, 42, 29, 0.18);
+  pointer-events: none;
+  transform: rotate(-22deg);
+  z-index: 0;
+  text-align: center;
+  line-height: 1;
+  user-select: none;
+}
+
+/* ─── Body shared elements ─── */
+
+.docpage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.docpage-eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--paper-ink-quiet);
+}
+
+.docpage-title {
+  font-family: "Iowan Old Style", "Charter", Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.18;
+  letter-spacing: -0.005em;
+  color: var(--paper-ink);
+  margin: 4px 0 0;
+}
+
+.docpage-title-tight {
+  font-size: 19px;
+}
+
+.docpage-meta {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 11.5px;
+  color: var(--paper-ink-quiet);
+  font-style: italic;
+  letter-spacing: 0.005em;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.docpage-meta-sep {
+  color: rgba(26, 22, 18, 0.32);
+}
+
+.docpage-meta-quiet {
+  color: rgba(26, 22, 18, 0.42);
+  margin-top: 6px;
+}
+
+.docpage-rule {
+  height: 1px;
+  background: var(--paper-rule);
+  margin: 4px 0;
+}
+
+.docpage-rule-soft {
+  background: var(--paper-rule-soft);
+  margin: 6px 0;
+}
+
+.docpage-section-heading {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--paper-ink-quiet);
+  margin: 8px 0 -2px;
+  font-weight: 600;
+}
+
+.docpage-prose {
+  font-size: 13px;
+  line-height: 1.66;
+  color: var(--paper-ink);
+  margin: 0;
+  text-rendering: optimizeLegibility;
+}
+
+.docpage-prose strong {
+  font-weight: 700;
+}
+
+.docpage-prose-lead {
+  font-size: 13.5px;
+  font-style: italic;
+  color: rgba(26, 22, 18, 0.84);
+}
+
+.docpage-clause {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.docpage-clause-heading {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--paper-ink);
+  margin: 0;
+  font-weight: 700;
+}
+
+/* ─── NDA signatures ─── */
+
+.docpage-signature-block {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 12px;
+}
+
+.docpage-signature {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.docpage-signature-line {
+  position: relative;
+  height: 36px;
+  border-bottom: 1px solid var(--paper-ink);
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 2px;
+  overflow: hidden;
+}
+
+.docpage-signature-mark {
+  font-family: "Snell Roundhand", "Apple Chancery", "Brush Script MT", "Lucida Handwriting", cursive;
+  font-size: 22px;
+  color: rgba(20, 22, 60, 0.85);
+  letter-spacing: -0.01em;
+  transform: translateY(-2px) rotate(-2deg);
+  display: inline-block;
+}
+
+.docpage-signature-name {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 12px;
+  color: var(--paper-ink);
+  font-weight: 600;
+}
+
+.docpage-signature-party {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 11px;
+  color: var(--paper-ink-quiet);
+  font-style: italic;
+}
+
+.docpage-signature-status {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.docpage-signature-status.is-signed {
+  color: var(--paper-green);
+}
+
+.docpage-signature-status.is-pending {
+  color: var(--paper-amber);
+}
+
+/* ─── Invoice ─── */
+
+.docpage-invoice-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.docpage-invoice-amount {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.docpage-amount-value {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--paper-ink);
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.docpage-status-tag {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 3px;
+  margin-top: 4px;
+}
+
+.docpage-status-tag.is-outstanding {
+  color: var(--paper-amber);
+  background: var(--paper-amber-bg);
+}
+
+.docpage-status-tag.is-paid {
+  color: var(--paper-green);
+  background: rgba(45, 106, 63, 0.14);
+}
+
+.docpage-status-tag.is-overdue {
+  color: var(--paper-red);
+  background: rgba(154, 47, 47, 0.14);
+}
+
+.docpage-line-items {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 12.5px;
+}
+
+.docpage-line-items th {
+  text-align: left;
+  padding: 6px 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--paper-ink-quiet);
+  border-bottom: 1px solid var(--paper-rule);
+  font-weight: 600;
+}
+
+.docpage-line-items td {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--paper-rule-soft);
+  color: var(--paper-ink);
+}
+
+.docpage-line-items tfoot th {
+  border-top: 2px solid var(--paper-ink);
+  border-bottom: 0;
+  padding-top: 8px;
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--paper-ink);
+  font-weight: 700;
+}
+
+.docpage-amount-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Projections ─── */
+
+.docpage-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  margin: 6px 0 2px;
+}
+
+.docpage-metric {
+  padding: 10px 12px;
+  background: rgba(26, 22, 18, 0.04);
+  border: 1px solid var(--paper-rule-soft);
+  border-radius: 3px;
+}
+
+.docpage-metric-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--paper-ink-quiet);
+  margin-bottom: 4px;
+}
+
+.docpage-metric-value {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--paper-ink);
+  line-height: 1;
+}
+
+.docpage-metric-delta {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  color: var(--paper-green);
+  letter-spacing: 0.06em;
+  margin-top: 3px;
+}
+
+/* ─── Report findings ─── */
+
+.docpage-findings {
+  margin: 0;
+  padding-left: 22px;
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--paper-ink);
+}
+
+.docpage-findings li {
+  margin-bottom: 6px;
+}
+
+/* ─── MOU ─── */
+
+.docpage-commitment {
+  border-left: 2px solid var(--paper-rule);
+  padding-left: 12px;
+  margin-bottom: 6px;
+}
+
+.docpage-commitment-party {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--paper-ink);
+  margin-bottom: 2px;
+}
+
+/* ─── Compliance ─── */
+
+.docpage-verdict {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--paper-rule);
+  border-radius: 3px;
+  margin: 6px 0;
+}
+
+.docpage-verdict-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--paper-ink-quiet);
+}
+
+.docpage-verdict-value {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--paper-ink);
+}
+
+.docpage-verdict.is-pass { border-left: 4px solid var(--paper-green); }
+.docpage-verdict.is-pass-with-conditions { border-left: 4px solid var(--paper-amber); }
+.docpage-verdict.is-fail { border-left: 4px solid var(--paper-red); }
+
+.docpage-finding-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.docpage-finding-list li {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 12px;
+  padding: 8px 10px;
+  background: rgba(26, 22, 18, 0.03);
+  border-left: 3px solid var(--paper-rule);
+  border-radius: 0 3px 3px 0;
+}
+
+.docpage-finding-list li[data-severity="high"]   { border-left-color: var(--paper-red); }
+.docpage-finding-list li[data-severity="medium"] { border-left-color: var(--paper-amber); }
+.docpage-finding-list li[data-severity="low"]    { border-left-color: var(--paper-green); }
+
+.docpage-finding-sev {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  align-self: center;
+}
+
+.docpage-finding-list li[data-severity="high"]   .docpage-finding-sev { color: var(--paper-red); }
+.docpage-finding-list li[data-severity="medium"] .docpage-finding-sev { color: var(--paper-amber); }
+.docpage-finding-list li[data-severity="low"]    .docpage-finding-sev { color: var(--paper-green); }
+
+.docpage-finding-area {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--paper-ink);
+}
+
+.docpage-finding-note {
+  font-family: "Iowan Old Style", Georgia, serif;
+  font-size: 12px;
+  color: var(--paper-ink-quiet);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
+/* ─── Page footer (filename + size) ─── */
+
+.docpage-footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding-top: 10px;
+  border-top: 1px solid var(--paper-rule-soft);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper-ink-quiet);
+}
+
+/* ─── Halt callout — sits below the page in the panel surface ─── */
+
+.docpage-halt-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: 8px;
+  font-family: "Iowan Old Style", Georgia, serif;
+}
+
+.docpage-halt-tag {
+  flex-shrink: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  font-weight: 700;
+  color: var(--color-amber-text);
+  padding: 3px 7px;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: 3px;
+  margin-top: 1px;
+}
+
+.docpage-halt-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-amber-muted);
+  font-family: "Iowan Old Style", Georgia, serif;
+}
