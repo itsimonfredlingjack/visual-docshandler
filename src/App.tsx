@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Layers, ArrowRight, X, Clock, Wifi, Mail, ShieldAlert, FolderInput, Paperclip, Search, Receipt, ScrollText, Sparkles } from 'lucide-react';
-import { LayoutGroup, AnimatePresence, motion } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Layers, ArrowRight, Mail, ShieldAlert, Search, PlusCircle } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { DocumentItem, ArchivedDocument } from './types';
-import { DocumentSlab } from './components/DocumentSlab';
-import { IntakeRail } from './components/IntakeRail';
+import { ChatView, type Message } from './components/ChatView';
+import { DocumentPagePreview } from './components/DocumentPagePreview';
 import { PipelineTrack, type StationId, type StationState, type RouteCompletion } from './components/PipelineTrack';
 import { RetrievalPalette } from './components/RetrievalPalette';
-import { SpecimenCard } from './components/SpecimenCard';
+import { ARCHIVE, findArchiveByName, previewFromLiveDoc } from './data/archiveFixtures';
+import { getMockAnswer } from './data/mockAnswers';
+import type { AnswerActionId } from './data/mockAnswers';
 
 // ─── Static data ───────────────────────────────────────────────
 const SEED_DOCS: DocumentItem[] = [
@@ -43,11 +45,6 @@ const SEED_DOCS: DocumentItem[] = [
   },
 ];
 
-const COMPARTMENTS = [
-  { id: 'ledger',   name: 'Project Ledger',    docCount: 1 },
-  { id: 'strategy', name: 'Strategic Archive',  docCount: 0 },
-];
-
 function nowMs() {
   return Date.now();
 }
@@ -60,38 +57,126 @@ function currentTimeWithSeconds() {
   return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-function currentTimeMinute() {
-  return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-}
-
 // ─── App ───────────────────────────────────────────────────────
 function App() {
-  const [riverDocs,   setRiverDocs]   = useState<DocumentItem[]>(SEED_DOCS);
-  const [selectedDocId, setSelectedDocId] = useState<string | null>('d2');
-  const [drawerDismissed, setDrawerDismissed] = useState(false);
+  const [riverDocs, setRiverDocs] = useState<DocumentItem[]>(SEED_DOCS);
 
-  // Success-moment state: completion blooms at Route + destination-row flash
+  // Chat state
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isTyping, setIsTyping] = useState(false);
+
+  const [isResolving, setIsResolving] = useState(false);
+  const [resolveVerb, setResolveVerb] = useState<'request-sig' | 'mark-exception' | 'force-route' | null>(null);
+  /** Archive doc currently displayed in the right workbench. Null = use the
+      derived default (halted live doc → most-recent filed → nothing). */
+  const [focusedArchiveId, setFocusedArchiveId] = useState<string | null>(null);
+
+  // Success-moment state
   const [routeCompletions, setRouteCompletions] = useState<RouteCompletion[]>([]);
-  const [flashDest, setFlashDest] = useState<{ name: string; key: number } | null>(null);
   const ingestStartRef = useRef<Map<string, number>>(new Map());
 
-  // Retrieval palette + flying-to-stage flourish
+  // Retrieval palette
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [paletteInitialQuery, setPaletteInitialQuery] = useState<string | null>(null);
   const [retrievedSpecimen, setRetrievedSpecimen] = useState<{ doc: ArchivedDocument; fromRect: DOMRect | null; openedAt: number } | null>(null);
-  const [clockLabel, setClockLabel] = useState(() => currentTimeMinute());
+  const paletteReturnFocusRef = useRef<HTMLElement | null>(null);
 
-  const openPaletteWithQuery = (q: string | null) => {
+  // ── Derived state ──
+  const activeDocs  = riverDocs.filter(d => d.status !== 'filed');
+  const filedDocs   = riverDocs.filter(d => d.status === 'filed');
+  const haltedDocs  = activeDocs.filter(d => d.status === 'uncertain');
+  const haltedDoc   = haltedDocs[0] ?? null;
+  const inFlightDoc = activeDocs.find(d => d.status === 'dropped' || d.status === 'analyzing' || d.status === 'routing') ?? null;
+  const activeAnswer = [...messages].reverse().find(m => m.role === 'assistant' && m.result)?.result ?? null;
+
+  const hasLiveProcessing = inFlightDoc !== null;
+  const showTransportSignals = hasLiveProcessing;
+
+  /**
+   * What the right workbench shows. Priority:
+   *   1. User-clicked source pill from chat → that archive doc.
+   *   2. In-flight doc (synthesized preview, plays the pipeline animation).
+   *   3. Halted doc (synthesized preview, halt overlay, resolve verbs below).
+   *   4. Most recent filed doc, if any.
+   *   5. Default: first archive entry, so the workbench is never blank.
+   */
+  const focusedDoc: { doc: ArchivedDocument; halt: DocumentItem | null; isLive: boolean } | null = useMemo(() => {
+    if (focusedArchiveId) {
+      const found = ARCHIVE.find(d => d.id === focusedArchiveId);
+      if (found) return { doc: found, halt: null, isLive: false };
+    }
+    if (inFlightDoc) {
+      return { doc: previewFromLiveDoc(inFlightDoc), halt: null, isLive: true };
+    }
+    if (haltedDoc) {
+      return { doc: previewFromLiveDoc(haltedDoc), halt: haltedDoc, isLive: true };
+    }
+    const lastFiled = filedDocs[filedDocs.length - 1];
+    if (lastFiled) {
+      const archived = findArchiveByName(lastFiled.name);
+      if (archived) return { doc: archived, halt: null, isLive: false };
+    }
+    return ARCHIVE[0] ? { doc: ARCHIVE[0], halt: null, isLive: false } : null;
+  }, [focusedArchiveId, inFlightDoc, haltedDoc, filedDocs]);
+
+  // ── Chat logic ──
+  const handleSendMessage = (query: string) => {
+    const userMsg: Message = {
+      id: shortRandomId(),
+      role: 'user',
+      content: query,
+      receivedAt: currentTimeWithSeconds(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+    setIsTyping(true);
+
+    setTimeout(() => {
+      const result = getMockAnswer(query, haltedDocs.length > 0);
+      const assistantMsg: Message = {
+        id: shortRandomId(),
+        role: 'assistant',
+        content: result.answer,
+        result,
+        receivedAt: currentTimeWithSeconds(),
+      };
+      setMessages(prev => [...prev, assistantMsg]);
+      setIsTyping(false);
+    }, 1200);
+  };
+
+  const handleAction = (id: AnswerActionId) => {
+    if (id === 'add-documents') {
+      handleIntake('perfect');
+      return;
+    }
+    if (id === 'open-sources') {
+      openPaletteWithQuery(activeAnswer?.query ?? null);
+      return;
+    }
+  };
+
+  /** Chat user clicked a source pill → focus that doc in the right workbench. */
+  const handleSourceClick = useCallback((title: string) => {
+    const found = findArchiveByName(title);
+    if (found) setFocusedArchiveId(found.id);
+  }, []);
+
+  const openPaletteWithQuery = useCallback((q: string | null) => {
+    const active = document.activeElement;
+    paletteReturnFocusRef.current = active instanceof HTMLElement ? active : null;
     setPaletteInitialQuery(q);
     setIsPaletteOpen(true);
-  };
+  }, []);
 
-  const openReviewFor = (id: string) => {
-    setSelectedDocId(id);
-    setDrawerDismissed(false);
-  };
+  const closePalette = useCallback(() => {
+    setIsPaletteOpen(false);
+    const returnTarget = paletteReturnFocusRef.current;
+    paletteReturnFocusRef.current = null;
+    if (returnTarget) {
+      requestAnimationFrame(() => returnTarget.focus());
+    }
+  }, []);
 
-  // Emit a completion event: bloom at Route station + flash destination row.
   const markFiled = useCallback((docId: string, docName: string, destination: string) => {
     const startedAt = ingestStartRef.current.get(docId);
     const completedAt = nowMs();
@@ -107,17 +192,12 @@ function App() {
       durationMs,
       createdAt: completedAt,
     }]);
-    setFlashDest({ name: destination, key: completedAt });
 
     setTimeout(() => {
       setRouteCompletions(prev => prev.filter(c => c.id !== completionId));
     }, 3600);
-    setTimeout(() => {
-      setFlashDest(prev => (prev && prev.name === destination && nowMs() - prev.key >= 1400) ? null : prev);
-    }, 1500);
   }, []);
 
-  // ── Intake handler ──────────────────────────────────────────
   const handleIntake = (scenario: 'perfect' | 'uncertain') => {
     const isPerf = scenario === 'perfect';
     const nowStr = currentTimeWithSeconds();
@@ -131,11 +211,11 @@ function App() {
       receivedAt: nowStr,
     };
 
+    setRetrievedSpecimen(null);
+    setFocusedArchiveId(null);
     setRiverDocs(prev => [...prev, newDoc]);
     ingestStartRef.current.set(newDoc.id, nowMs());
 
-    // Pipeline timing: intake (1.2s) → extract (2s) → route (1.5s) → filed
-    // Slow enough to actually see the story across stations.
     setTimeout(() => {
       setRiverDocs(prev => prev.map(d => d.id === newDoc.id ? { ...d, status: 'analyzing' } : d));
 
@@ -162,20 +242,11 @@ function App() {
               ruleApplied: 'Grounding failure. Rule LEGAL_SIGNATURE_REQUIRED not satisfied.',
             },
           } : d));
-          openReviewFor(newDoc.id);
         }
       }, 2000);
     }, 1200);
   };
 
-  // ── Derived state ────────────────────────────────────────────
-  const activeDocs  = riverDocs.filter(d => d.status !== 'filed');
-  const filedDocs   = riverDocs.filter(d => d.status === 'filed');
-  const haltedDocs  = activeDocs.filter(d => d.status === 'uncertain');
-  const reviewDoc   = selectedDocId ? activeDocs.find(d => d.id === selectedDocId && d.status === 'uncertain') : null;
-  const reviewOpen  = !!reviewDoc && !drawerDismissed;
-
-  // ── Pipeline station derivation ─────────────────────────────
   const stationIdForStatus = (s: DocumentItem['status']): StationId => {
     if (s === 'dropped') return 'intake';
     if (s === 'analyzing') return 'extract';
@@ -198,34 +269,25 @@ function App() {
   });
   const haltedStation: StationId | null = haltedDocs.length > 0 ? 'classify' : null;
 
-  const confidence  = reviewDoc?.explanation?.confidence ?? 0;
-  const THRESHOLD   = 85;
-  const thresholdPct = `${THRESHOLD}%`;
-  const confidencePct = `${confidence}%`;
+  const haltConfidence = haltedDoc?.explanation?.confidence ?? 0;
+  const HALT_THRESHOLD = 85;
+  const haltReason = haltedDoc?.explanation?.ruleApplied ?? 'Needs review';
+  const conciseHaltReason = haltReason.split('.').find(segment => segment.trim().length > 0)?.trim() ?? haltReason;
 
-  // ── Force-route handler ──────────────────────────────────────
-  const handleForceRoute = (docId: string, destination: string) => {
-    const doc = riverDocs.find(d => d.id === docId);
-    const docName = doc?.name ?? 'Document';
-    ingestStartRef.current.set(docId, nowMs());
-    setRiverDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'routing', destination } : d));
-    setSelectedDocId(null);
-    setDrawerDismissed(false);
-    setTimeout(() => {
-      setRiverDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'filed' } : d));
-      markFiled(docId, docName, destination);
-    }, 700);
-  };
-
-  // ── Resolve-action handler (verbs that address the halt itself) ─
   const handleResolve = useCallback((docId: string, verb: 'request-sig' | 'mark-exception') => {
+    if (isResolving) return;
+    if (verb === 'mark-exception') {
+      const shouldProceed = window.confirm('File this document as an exception? This action will be audit-logged.');
+      if (!shouldProceed) return;
+    }
     const doc = riverDocs.find(d => d.id === docId);
     const docName = doc?.name ?? 'Document';
+    setIsResolving(true);
+    setResolveVerb(verb);
     ingestStartRef.current.set(docId, nowMs());
 
     if (verb === 'request-sig') {
       setRiverDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'analyzing' } : d));
-      setSelectedDocId(null);
       setTimeout(() => {
         setRiverDocs(prev => prev.map(d => d.id === docId ? {
           ...d, status: 'routing', destination: 'Project Ledger',
@@ -234,6 +296,8 @@ function App() {
         setTimeout(() => {
           setRiverDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'filed' } : d));
           markFiled(docId, docName, 'Project Ledger');
+          setIsResolving(false);
+          setResolveVerb(null);
         }, 800);
       }, 1100);
     } else {
@@ -241,604 +305,262 @@ function App() {
         ...d, status: 'routing', destination: 'Project Ledger',
         extractedTags: ['Legal', 'Exception'],
       } : d));
-      setSelectedDocId(null);
-      setDrawerDismissed(false);
       setTimeout(() => {
         setRiverDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'filed' } : d));
         markFiled(docId, docName, 'Project Ledger');
+        setIsResolving(false);
+        setResolveVerb(null);
       }, 700);
     }
-  }, [markFiled, riverDocs]);
+  }, [isResolving, markFiled, riverDocs]);
 
-  // ── Keyboard shortcuts ──────────────────────────────────────
   useEffect(() => {
+    const isTextEntryTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || target.isContentEditable;
+    };
+
     const handler = (e: KeyboardEvent) => {
       if (isPaletteOpen) return;
       if (e.key === 'Escape' && retrievedSpecimen) {
         setRetrievedSpecimen(null);
         return;
       }
-      if (e.key === 'Escape' && reviewOpen) {
-        setDrawerDismissed(true);
+      if (e.key === 'Escape' && focusedArchiveId) {
+        setFocusedArchiveId(null);
+        return;
       }
-      if (e.key === 'Enter' && reviewDoc && reviewOpen) {
+      // ⌘/Ctrl+Enter resolves the active halt with "Request signature".
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && haltedDoc && !isResolving) {
+        if (isTextEntryTarget(e.target)) return;
         e.preventDefault();
-        handleResolve(reviewDoc.id, 'request-sig');
+        handleResolve(haltedDoc.id, 'request-sig');
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [handleResolve, isPaletteOpen, reviewOpen, reviewDoc, retrievedSpecimen]);
+  }, [handleResolve, isPaletteOpen, isResolving, haltedDoc, retrievedSpecimen, focusedArchiveId]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setClockLabel(currentTimeMinute()), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  // Global ⌘K / Ctrl+K → toggle retrieval palette
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsPaletteOpen(prev => !prev);
+        if (isPaletteOpen) {
+          closePalette();
+          return;
+        }
+        openPaletteWithQuery(null);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [closePalette, isPaletteOpen, openPaletteWithQuery]);
 
-  // Retrieval: user picks a doc → palette closes + flying card takes over
   const handleRetrievalSelect = (doc: ArchivedDocument, rect: DOMRect | null) => {
     setIsPaletteOpen(false);
+    paletteReturnFocusRef.current = null;
     setRetrievedSpecimen({ doc, fromRect: rect, openedAt: nowMs() });
   };
 
-  // ─────────────────────────────────────────────────────────────
+  // What kicker label sits above the rendered page in the workbench header.
+  const workbenchKicker = inFlightDoc
+    ? `Importing — ${inFlightDoc.name}`
+    : haltedDoc
+      ? 'Needs review'
+      : focusedArchiveId && focusedDoc
+        ? focusedDoc.doc.name
+        : filedDocs.length > 0
+          ? 'Last filed'
+          : 'No document';
+
   return (
-    <div className={`app-shell ${reviewOpen ? 'has-review' : ''} ${retrievedSpecimen ? 'has-retrieval' : ''}`}>
+    <div className={`app-shell layout-chat-first ${retrievedSpecimen ? 'has-retrieval' : ''} ${messages.length > 0 ? 'has-messages' : ''} ${haltedDoc ? 'has-halt' : ''}`}>
 
       {/* ════════ HEADER ════════════════════════════════════════ */}
       <header className="app-header">
-        {/* Left: logo + primary search */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <Layers size={18} color="#a1a1aa" />
-          <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: '-0.03em', color: '#f4f4f5' }}>
-            LiveFlow
-          </span>
+        <div className="app-brand">
+          <Layers size={18} />
+          <div className="app-brand-copy">
+            <span className="app-brand-title">LiveFlow</span>
+            <span className="app-brand-kicker">Visual document workbench</span>
+          </div>
+        </div>
+        <div className="app-header-actions">
           <button
-            type="button"
-            onClick={() => openPaletteWithQuery(null)}
-            aria-label="Open retrieval palette"
             className="header-search-bar focus-ring"
+            onClick={() => openPaletteWithQuery(null)}
+            aria-label="Search documents (⌘K)"
           >
-            <Search size={13} color="#a1a1aa" />
-            <span className="header-search-placeholder">Retrieve a document or ask…</span>
+            <Search size={14} color="#8a8a93" />
+            <span className="header-search-placeholder">Retrieve a document or ask a question…</span>
             <span className="header-search-kbd">⌘K</span>
           </button>
-        </div>
-
-        {/* Center: a single primary section label — no disabled tabs */}
-        <div className="nav-tabs">
-          <div className="nav-tab active">Pipeline</div>
-        </div>
-
-        {/* Right: calm status pill — dot + human copy, amber only when halt */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-          <div
-            className={`header-status ${haltedDocs.length > 0 ? 'is-halt' : activeDocs.length > 0 ? 'is-processing' : ''}`}
-            role="status"
-            aria-live="polite"
+          <button
+            onClick={() => handleIntake('perfect')}
+            className="util-btn-primary util-btn-import focus-ring"
+            aria-label="Import document"
+            disabled={hasLiveProcessing}
           >
-            <span className="dot" />
-            <span>
-              {haltedDocs.length > 0
-                ? `${haltedDocs.length} need${haltedDocs.length === 1 ? 's' : ''} review`
-                : activeDocs.length > 0
-                  ? `${activeDocs.length} in flight`
-                  : 'All clear'}
-            </span>
-          </div>
+            <PlusCircle size={15} />
+            <span>Import document</span>
+          </button>
         </div>
       </header>
 
-      {/* ════════ BODY: rail + stage ════════════════════════════ */}
-      <div className="app-body">
+      {/* ════════ BODY: chat + workbench ════════════════════════ */}
+      <div className="app-body has-side-panel">
 
-        {/* ── Left intake rail ── */}
-        <IntakeRail
-          onIntake={handleIntake}
-          haltedCount={haltedDocs.length}
-          recentDocs={riverDocs}
-          selectedDocId={selectedDocId}
-          compartments={COMPARTMENTS}
-          filedCounts={Object.fromEntries(
-            COMPARTMENTS.map(c => [c.name, filedDocs.filter(d => d.destination === c.name).length])
-          )}
-          reviewOpen={reviewOpen}
-          onSelectDoc={openReviewFor}
-          flashDest={flashDest}
-        />
+        {/* ── Left: chat ── */}
+        <div className="chat-canvas">
+          <ChatView
+            messages={messages}
+            onSendMessage={handleSendMessage}
+            isTyping={isTyping}
+            onAction={handleAction}
+            onSourceClick={handleSourceClick}
+            indexedCount={ARCHIVE.length}
+            haltedCount={haltedDocs.length}
+          />
+        </div>
 
-        {/* ── Stage ── */}
-        <LayoutGroup>
-          <div className={`stage ${reviewOpen ? 'has-review' : ''} ${retrievedSpecimen ? 'has-retrieval' : ''}`}>
+        {/* ── Right: workbench (rendered document lives here) ── */}
+        <div className="pipeline-panel workbench-panel">
+          <div className="workbench-header">
+            <span className={`workbench-kicker ${haltedDoc ? 'is-halted' : inFlightDoc ? 'is-active' : ''}`}>
+              <span className="workbench-kicker-dot" />
+              <span>{workbenchKicker}</span>
+            </span>
+            {focusedArchiveId && (
+              <button
+                type="button"
+                className="workbench-clear focus-ring"
+                onClick={() => setFocusedArchiveId(null)}
+              >
+                Clear focus
+              </button>
+            )}
+          </div>
 
-            {/* Pipeline track — the flow-lane docs travel through */}
-            <div className="pipeline-region">
+          {showTransportSignals && (
+            <div className="workbench-track">
               <PipelineTrack stations={stations} haltedStationId={haltedStation} completions={routeCompletions} />
             </div>
+          )}
 
-            {/* Tether — Classify station ↓ halted card */}
-            {haltedStation === 'classify' && (
-              <motion.div
-                className="station-tether"
-                initial={{ opacity: 0, scaleY: 0.3 }}
-                animate={{
-                  opacity: 1,
-                  scaleY: 1,
-                  height: reviewOpen ? 140 : 180,
-                }}
-                transition={{ duration: 0.5 }}
-                style={{ transformOrigin: 'top center' }}
-              />
-            )}
-
-
-            {/* Stage floor glow — blue ambient (always), amber in halt */}
-            <div className="stage-floor-glow" />
-
-            {/* Stage vignette — darkens top + bottom edges, focuses on card zone */}
-            <div className="stage-vignette" />
-
-            {/* Card ↔ drawer tether — amber gradient wash deepening toward drawer */}
-            <AnimatePresence>
-              {reviewOpen && (
+          <div className="workbench-stage">
+            <AnimatePresence mode="wait">
+              {focusedDoc ? (
                 <motion.div
-                  key="drawer-wash"
-                  className="stage-drawer-wash"
+                  key={focusedDoc.doc.id}
+                  className="workbench-page-wrap"
+                  initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 240, damping: 26 }}
+                >
+                  <DocumentPagePreview
+                    doc={focusedDoc.doc}
+                    haltedReason={focusedDoc.halt ? haltReason : undefined}
+                  />
+                  {!focusedDoc.halt && focusedDoc.isLive && inFlightDoc && (
+                    <div className="workbench-flight">
+                      <span className="workbench-flight-dot" />
+                      <span>{stationLabelFor(inFlightDoc.status)}</span>
+                    </div>
+                  )}
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="empty"
+                  className="workbench-empty"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.4 }}
-                />
-              )}
-            </AnimatePresence>
-
-            {/* Observation frame — corner brackets (specimen under examination) */}
-            <div
-              className={`obs-frame stage-obs-frame ${reviewOpen ? 'is-halted' : ''}`}
-            >
-              <span className="obs-bracket tl" />
-              <span className="obs-bracket tr" />
-              <span className="obs-bracket bl" />
-              <span className="obs-bracket br" />
-            </div>
-
-
-            {/* ── Active document on stage ── */}
-            <motion.div
-              className="stage-workspace"
-              animate={{
-                scale: reviewOpen ? 0.96 : 1,
-                y: activeDocs.length > 0 ? -28 : 0,
-                opacity: retrievedSpecimen ? 0.62 : 1,
-              }}
-              transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-            >
-              <AnimatePresence>
-                {activeDocs.length === 0 ? (
-                  <motion.div
-                    key="empty"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                    className="launch-pad"
-                  >
-                    <div className="launch-pad-hint">
-                      <div className="launch-pad-headline">Nothing in flight.</div>
-                      <div className="launch-pad-hint-copy">
-                        Press <kbd className="launch-pad-kbd">⌘K</kbd> to retrieve a document, or <em>ingest</em> to bring a new one in.
-                      </div>
-                    </div>
-                    <div className="launch-pad-grid">
-                      <button type="button" className="launch-pad-tile focus-ring" onClick={() => openPaletteWithQuery('')}>
-                        <Clock size={15} color="#a1a1aa" />
-                        <div className="launch-pad-tile-body">
-                          <span className="launch-pad-tile-title">Recent</span>
-                          <span className="launch-pad-tile-sub">Latest filed documents</span>
-                        </div>
-                        <ArrowRight size={12} color="#71717a" />
-                      </button>
-                      <button type="button" className="launch-pad-tile focus-ring" onClick={() => openPaletteWithQuery('invoice')}>
-                        <Receipt size={15} color="#fbbf24" />
-                        <div className="launch-pad-tile-body">
-                          <span className="launch-pad-tile-title">Invoices</span>
-                          <span className="launch-pad-tile-sub">Payments and vendors</span>
-                        </div>
-                        <ArrowRight size={12} color="#71717a" />
-                      </button>
-                      <button type="button" className="launch-pad-tile focus-ring" onClick={() => openPaletteWithQuery('contract')}>
-                        <ScrollText size={15} color="#93c5fd" />
-                        <div className="launch-pad-tile-body">
-                          <span className="launch-pad-tile-title">Contracts</span>
-                          <span className="launch-pad-tile-sub">NDAs, MOUs, partnerships</span>
-                        </div>
-                        <ArrowRight size={12} color="#71717a" />
-                      </button>
-                      <button type="button" className="launch-pad-tile focus-ring" onClick={() => openPaletteWithQuery(null)}>
-                        <Sparkles size={15} color="#86efac" />
-                        <div className="launch-pad-tile-body">
-                          <span className="launch-pad-tile-title">Ask anything</span>
-                          <span className="launch-pad-tile-sub">Type a question in plain language</span>
-                        </div>
-                        <ArrowRight size={12} color="#71717a" />
-                      </button>
-                    </div>
-                  </motion.div>
-                ) : (
-                  activeDocs.map((doc, index) => {
-                    const scale = Math.max(0.85, 1 - index * 0.05);
-                    const yOffset = index * -24;
-                    const zIndex = 30 - index;
-                    return (
-                      <motion.div
-                        key={doc.id}
-                        style={{ position: 'absolute', zIndex }}
-                        initial={{ opacity: 0, scale: 0.88, y: yOffset - 20 }}
-                        animate={{ opacity: 1, scale, y: yOffset }}
-                        exit={{ opacity: 0, scale: scale - 0.05, y: yOffset + 16 }}
-                        transition={{ type: 'spring', stiffness: 280, damping: 26 }}
-                      >
-                        <DocumentSlab
-                          doc={doc}
-                          onClick={() => openReviewFor(doc.id)}
-                          isRouting={doc.status === 'routing'}
-                          isReviewing={reviewOpen && doc.id === reviewDoc?.id}
-                        />
-                      </motion.div>
-                    );
-                  })
-                )}
-              </AnimatePresence>
-            </motion.div>
-
-            {/* ════ RETRIEVED SPECIMEN LANDING ════ */}
-            {retrievedSpecimen && (
-              <motion.div
-                key={`retrieved-${retrievedSpecimen.doc.id}-${retrievedSpecimen.openedAt}`}
-                className="retrieved-specimen-panel"
-                initial={{ opacity: 0, scale: 0.96, y: 12 }}
-                animate={{
-                  opacity: 1,
-                  scale: 1,
-                  y: 0,
-                }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ type: 'spring', stiffness: 220, damping: 26 }}
-              >
-                <span className="obs-bracket tl" />
-                <span className="obs-bracket tr" />
-                <span className="obs-bracket bl" />
-                <span className="obs-bracket br" />
-                <div className="retrieved-specimen-header">
-                  <div>
-                    <div className="retrieved-specimen-kicker">Retrieved content</div>
-                    <h2>{retrievedSpecimen.doc.name}</h2>
-                    <p>{retrievedSpecimen.doc.compartment} · {retrievedSpecimen.doc.source} · filed {retrievedSpecimen.doc.filedAt}</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="util-btn-close focus-ring retrieved-specimen-close"
-                    aria-label="Close retrieved content"
-                    onClick={() => setRetrievedSpecimen(null)}
-                  >
-                    <X size={14} />
-                    <span>Esc</span>
-                  </button>
-                </div>
-                <SpecimenCard doc={retrievedSpecimen.doc} />
-              </motion.div>
-            )}
-
-            {/* ════ REVIEW DRAWER ══════════════════════════════ */}
-            <AnimatePresence>
-              {reviewOpen && reviewDoc && (
-                <motion.aside
-                  key="drawer"
-                  className="review-drawer"
-                  initial={{ x: 460 }}
-                  animate={{ x: 0 }}
-                  exit={{ x: 460 }}
-                  transition={{ type: 'spring', stiffness: 340, damping: 30 }}
                 >
-                  {/* Drawer inner scroll area */}
-                  <div style={{ flex: 1, overflowY: 'auto', padding: '28px 28px 28px' }}>
-
-                    {/* Drawer header — human framing, not robotic "MANUAL OVERRIDE" */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <h2 style={{
-                          fontSize: 16,
-                          fontWeight: 600,
-                          letterSpacing: '-0.015em',
-                          color: '#f4f4f5',
-                          fontFamily: 'Geist, sans-serif',
-                        }}>
-                          Review required
-                        </h2>
-                        <span style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-                          LiveFlow couldn't file this confidently. Confirm what to do.
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => setDrawerDismissed(true)}
-                        className="util-btn-close focus-ring"
-                        aria-label="Close review drawer"
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 6,
-                          background: 'rgba(255,255,255,0.04)',
-                          border: '1px solid rgba(255,255,255,0.06)',
-                          borderRadius: 8,
-                          padding: '4px 8px',
-                          cursor: 'pointer',
-                          height: 32,
-                          flexShrink: 0,
-                        }}
-                      >
-                        <X size={14} />
-                        <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#8a8a93', letterSpacing: '0.04em' }}>Esc</span>
-                      </button>
-                    </div>
-                    {/* Separator */}
-                    <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '18px 0 22px' }} />
-
-                    {/* Why-it-halted block */}
-                    <div style={{
-                      background: 'rgba(245,158,11,0.035)',
-                      border: '1px solid rgba(245,158,11,0.14)',
-                      borderRadius: 10,
-                      padding: 18,
-                      marginBottom: 22,
-                    }}>
-                      <div className="drawer-section">
-                        <span className="drawer-section-title" style={{ color: '#fbbf24' }}>Why it halted</span>
-                      </div>
-                      <div style={{ fontSize: 13.5, color: '#f4f4f5', lineHeight: 1.55, marginBottom: 14 }}>
-                        {reviewDoc.explanation?.ruleApplied}
-                      </div>
-
-                      {/* Confidence bar — moved up, more prominent */}
-                      <div style={{ marginBottom: 8, marginTop: 6 }}>
-                        <div role="progressbar" aria-valuenow={confidence} aria-valuemin={0} aria-valuemax={100} aria-label={`Confidence: ${confidence}%`} style={{ position: 'relative', height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 3 }}>
-                          <motion.div
-                            style={{ position: 'absolute', top: 0, left: 0, height: '100%', background: 'linear-gradient(90deg, #ef4444 0%, #f59e0b 100%)', borderRadius: 3 }}
-                            initial={{ width: 0 }}
-                            animate={{ width: confidencePct }}
-                            transition={{ duration: 0.9, ease: 'easeOut' }}
-                          />
-                          <div style={{
-                            position: 'absolute', top: -4, bottom: -4,
-                            left: thresholdPct,
-                            width: 2,
-                            background: '#a1a1aa',
-                            borderRadius: 1,
-                          }} />
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                          Confidence
-                        </span>
-                        <span style={{ fontSize: 11.5 }}>
-                          <span style={{ color: '#fbbf24', fontWeight: 600 }}>{confidence}%</span>
-                          <span style={{ color: 'var(--text-tertiary)' }}> · needs {THRESHOLD}%</span>
-                        </span>
-                      </div>
-
-                      {/* Footer telemetry — demoted to a quiet single line */}
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        marginTop: 14,
-                        paddingTop: 10,
-                        borderTop: '1px solid rgba(245,158,11,0.08)',
-                        fontSize: 10.5,
-                        fontFamily: 'monospace',
-                        letterSpacing: '0.04em',
-                        color: 'var(--text-tertiary)',
-                      }}>
-                        <span>halted {reviewDoc.haltedAt || reviewDoc.receivedAt}</span>
-                        <span>rule · LEGAL_SIG_REQUIRED</span>
-                      </div>
-                    </div>
-
-                    {/* ── Evidence block ── */}
-                    {reviewDoc.evidence && (
-                      <div style={{ marginBottom: 22 }}>
-                        <div className="drawer-section">
-                          <span className="drawer-section-title">Evidence</span>
-                          <span className="drawer-section-sub">from sender</span>
-                        </div>
-                        <div style={{
-                          background: 'rgba(255,255,255,0.02)',
-                          border: '1px solid rgba(255,255,255,0.06)',
-                          borderRadius: 10,
-                          padding: 14,
-                        }}>
-                          {/* From / Subject — mixed case, Geist labels */}
-                          <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr', rowGap: 7, columnGap: 10, marginBottom: 10 }}>
-                            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'Geist, sans-serif' }}>From</div>
-                            <div style={{ fontSize: 12, fontFamily: 'monospace', color: '#d4d4d8' }}>{reviewDoc.evidence.sender}</div>
-                            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'Geist, sans-serif' }}>Subject</div>
-                            <div style={{ fontSize: 12, color: '#e4e4e7', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {reviewDoc.evidence.subject}
-                            </div>
-                          </div>
-                          {/* Preview quote */}
-                          {reviewDoc.evidence.preview && (
-                            <div style={{
-                              borderLeft: '2px solid rgba(255,255,255,0.08)',
-                              paddingLeft: 10,
-                              fontSize: 12.5,
-                              color: 'var(--text-secondary)',
-                              lineHeight: 1.55,
-                              fontStyle: 'italic',
-                              marginBottom: 10,
-                            }}>
-                              "{reviewDoc.evidence.preview}"
-                            </div>
-                          )}
-                          {/* Attachment chip */}
-                          <div style={{
-                            display: 'flex', alignItems: 'center', gap: 8,
-                            paddingTop: 10,
-                            borderTop: '1px solid rgba(255,255,255,0.04)',
-                          }}>
-                            <Paperclip size={12} color="#8a8a93" />
-                            <span style={{ fontSize: 11.5, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                              {reviewDoc.name}
-                            </span>
-                            <span style={{ fontSize: 10.5, fontFamily: 'monospace', color: 'var(--text-tertiary)', marginLeft: 'auto' }}>
-                              {reviewDoc.evidence.fileSize}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Separator */}
-                    <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', marginBottom: 20 }} />
-
-                    {/* ── Resolve actions ── */}
-                    <div style={{ marginBottom: 20 }}>
-                      <div className="drawer-section">
-                        <span className="drawer-section-title">Resolve the halt</span>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <button
-                          onClick={() => handleResolve(reviewDoc.id, 'request-sig')}
-                          className="util-btn-route focus-ring primary"
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <Mail size={15} />
-                            <div>
-                              <div className="route-title" style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
-                                Request signature
-                              </div>
-                              <div className="route-subtitle" style={{ fontSize: 11.5 }}>
-                                Email sender · resolves halt
-                              </div>
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{
-                              fontSize: 9, fontFamily: 'monospace',
-                              color: 'rgba(0,0,0,0.4)', background: 'rgba(0,0,0,0.06)',
-                              borderRadius: 4, padding: '2px 6px', letterSpacing: '0.04em',
-                            }}>⏎</span>
-                            <ArrowRight size={16} />
-                          </div>
-                        </button>
-
-                        <button
-                          onClick={() => handleResolve(reviewDoc.id, 'mark-exception')}
-                          className="util-btn-route focus-ring"
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <ShieldAlert size={15} color="#a1a1aa" />
-                            <div>
-                              <div className="route-title" style={{ fontSize: 14, fontWeight: 500, color: '#e4e4e7', marginBottom: 2 }}>
-                                Mark as exception
-                              </div>
-                              <div className="route-subtitle" style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>
-                                File without signature · audit-logged
-                              </div>
-                            </div>
-                          </div>
-                          <ArrowRight size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Separator */}
-                    <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', marginBottom: 20 }} />
-
-                    {/* ── Route targets (secondary, file-as-is) ── */}
-                    <div>
-                      <div className="drawer-section">
-                        <span className="drawer-section-title" style={{ color: 'var(--text-secondary)' }}>Or file as-is</span>
-                        <FolderInput size={12} color="#8a8a93" />
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {COMPARTMENTS.map(comp => {
-                          const docCount = filedDocs.filter(d => d.destination === comp.name).length;
-                          return (
-                            <button
-                              key={comp.id}
-                              onClick={() => handleForceRoute(reviewDoc.id, comp.name)}
-                              className="util-btn-route-ghost focus-ring"
-                            >
-                              <span style={{ fontSize: 13, color: '#d4d4d8', fontWeight: 500 }}>
-                                {comp.name}
-                              </span>
-                              <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <span style={{ fontSize: 10.5, fontFamily: 'monospace', color: 'var(--text-tertiary)' }}>
-                                  {docCount === 0 ? '—' : `${docCount.toString().padStart(2, '0')}`}
-                                </span>
-                                <ArrowRight size={14} color="#a1a1aa" />
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                  </div>
-                </motion.aside>
+                  <span className="workbench-empty-eyebrow">WORKBENCH · READY</span>
+                  <p className="workbench-empty-copy">
+                    Import a document or run a query. The rendered page will land here.
+                  </p>
+                </motion.div>
               )}
             </AnimatePresence>
-
           </div>
-        </LayoutGroup>
+
+          {focusedDoc?.halt && (
+            <div className="workbench-resolve" key="resolve">
+              <div className="workbench-resolve-meta">
+                <div className="workbench-resolve-meta-row">
+                  <span className="workbench-resolve-meta-label">Issue</span>
+                  <span className="workbench-resolve-meta-value">{conciseHaltReason}</span>
+                </div>
+                <div className="workbench-resolve-meta-row">
+                  <span className="workbench-resolve-meta-label">Confidence</span>
+                  <span className="workbench-resolve-meta-value">
+                    <span className="workbench-resolve-conf">{haltConfidence}%</span>
+                    <span className="workbench-resolve-conf-needs"> · needs {HALT_THRESHOLD}%</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="workbench-resolve-verbs">
+                <button
+                  onClick={() => handleResolve(focusedDoc.halt!.id, 'request-sig')}
+                  className="workbench-verb is-primary focus-ring"
+                  disabled={isResolving}
+                >
+                  <Mail size={15} />
+                  <span className="workbench-verb-copy">
+                    <span className="workbench-verb-title">
+                      {isResolving && resolveVerb === 'request-sig' ? 'Requesting signature…' : 'Request signature'}
+                    </span>
+                    <span className="workbench-verb-sub">Email sender · resolves halt</span>
+                  </span>
+                  <ArrowRight size={16} />
+                </button>
+                <button
+                  onClick={() => handleResolve(focusedDoc.halt!.id, 'mark-exception')}
+                  className="workbench-verb is-secondary focus-ring"
+                  disabled={isResolving}
+                >
+                  <ShieldAlert size={15} />
+                  <span className="workbench-verb-copy">
+                    <span className="workbench-verb-title">
+                      {isResolving && resolveVerb === 'mark-exception' ? 'Filing exception…' : 'Mark as exception'}
+                    </span>
+                    <span className="workbench-verb-sub">File without signature · audit-logged</span>
+                  </span>
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
+
       </div>
 
-      {/* ════════ STATUS BAR ══════════════════════════════════ */}
-      <footer className="status-bar" aria-label="System telemetry">
-        <div className="status-telemetry-group">
-          <span className="status-telemetry-item status-connection">
-            <Wifi size={10} />
-            <span>Connected</span>
-          </span>
-          <span className="dot-sep" aria-hidden="true">·</span>
-          <span className="status-telemetry-item">
-            <span className="status-label">Docs</span>
-            <span className="status-value">{riverDocs.length}</span>
-          </span>
-          <span className="dot-sep" aria-hidden="true">·</span>
-          <span className="status-telemetry-item">
-            <span className="status-label">Filed</span>
-            <span className="status-value">{filedDocs.length}</span>
-          </span>
-        </div>
-        <div className="status-telemetry-item status-clock">
-          <Clock size={10} />
-          <span className="status-value">{clockLabel}</span>
-        </div>
-      </footer>
-
-      {/* ════════ RETRIEVAL PALETTE (⌘K) ═════════════════════════ */}
       {isPaletteOpen && (
         <RetrievalPalette
           key={`palette-${paletteInitialQuery ?? 'blank'}`}
           isOpen={isPaletteOpen}
           initialQuery={paletteInitialQuery}
-          onClose={() => setIsPaletteOpen(false)}
+          onClose={closePalette}
           onSelect={handleRetrievalSelect}
         />
       )}
     </div>
   );
+}
+
+function stationLabelFor(status: DocumentItem['status']): string {
+  switch (status) {
+    case 'dropped':    return 'INTAKE · received';
+    case 'analyzing':  return 'EXTRACT · scanning';
+    case 'classifying':return 'CLASSIFY · matching rules';
+    case 'routing':    return 'ROUTE · arriving at compartment';
+    default:           return '';
+  }
 }
 
 export default App;

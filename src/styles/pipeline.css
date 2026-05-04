@@ -1,0 +1,444 @@
+/* ─── Workbench panel — where the rendered document is seen ─── */
+.pipeline-panel {
+  width: 540px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border-faint);
+  background:
+    radial-gradient(ellipse 540px 480px at 60% 24%, rgba(243, 237, 224, 0.035) 0%, transparent 64%),
+    var(--bg-rail);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  transition: opacity 0.32s ease, filter 0.32s ease;
+}
+
+.workbench-panel {
+  padding: 18px 22px 22px;
+  gap: 18px;
+}
+
+.workbench-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.workbench-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 7px 13px 7px 11px;
+  border-radius: 999px;
+  background: rgba(243, 237, 224, 0.04);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 0 rgba(243, 237, 224, 0.04);
+}
+
+.workbench-kicker-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-gray-4);
+  box-shadow: 0 0 0 0 transparent;
+}
+
+/* Active and halted kicker — text color is the only signal. No tinted bg,
+   no glowing dots, no animations. */
+.workbench-kicker.is-active { color: var(--cream-2); }
+.workbench-kicker.is-halted {
+  color: var(--amber);
+  border-color: rgba(184, 114, 45, 0.32);
+}
+.workbench-kicker .workbench-kicker-dot { display: none; }
+
+@keyframes workbench-kicker-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+
+.workbench-clear {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: rgba(243, 237, 224, 0.04);
+  border: 1px solid var(--border-subtle);
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+}
+
+.workbench-clear:hover {
+  background: rgba(243, 237, 224, 0.08);
+  color: var(--text-primary);
+  border-color: var(--border-visible);
+}
+
+.workbench-track {
+  position: relative;
+  height: 64px;
+  flex-shrink: 0;
+}
+
+.workbench-stage {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  scrollbar-width: thin;
+  padding: 4px 2px 4px 2px;
+}
+
+.workbench-stage::-webkit-scrollbar { width: 6px; }
+.workbench-stage::-webkit-scrollbar-thumb { background: rgba(243, 237, 224, 0.08); border-radius: 3px; }
+
+.workbench-page-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.workbench-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 32px 24px;
+}
+
+.workbench-empty-eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--color-gray-4);
+}
+
+.workbench-empty-copy {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  max-width: 280px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.workbench-flight {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  align-self: flex-start;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-cyan-text);
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.22);
+}
+
+.workbench-flight-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-cyan-bright);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+  animation: workbench-kicker-pulse 1.4s ease-in-out infinite;
+}
+
+/* ─── Resolve verbs (replaces the old drawer) ─── */
+
+/* Halt block — no tinted box, no glow. Just an amber rule on the left
+   edge and amber text. Matches the assistant-message halt treatment. */
+.workbench-resolve {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-left: 3px solid var(--amber);
+  padding: 4px 0 4px 16px;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.workbench-resolve-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.workbench-resolve-meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: "Geist", sans-serif;
+}
+
+.workbench-resolve-meta-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-amber-text);
+}
+
+.workbench-resolve-meta-value {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  font-family: "Geist", sans-serif;
+}
+
+.workbench-resolve-conf {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  color: var(--color-amber-text);
+  font-weight: 600;
+}
+
+.workbench-resolve-conf-needs {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.workbench-resolve-verbs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workbench-verb {
+  display: grid;
+  grid-template-columns: 16px 1fr 16px;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-family: "Geist", sans-serif;
+  transition: background 0.18s, border-color 0.18s, transform 0.12s;
+}
+
+.workbench-verb:active { transform: scale(0.98); }
+.workbench-verb:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.workbench-verb-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workbench-verb-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.workbench-verb-sub {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.workbench-verb.is-primary {
+  background: var(--paper);
+  color: var(--ink-primary);
+  border: 1px solid transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 8px 18px -10px rgba(0, 0, 0, 0.4);
+}
+
+.workbench-verb.is-primary:hover:not(:disabled) {
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 24px -10px rgba(0, 0, 0, 0.45);
+}
+
+.workbench-verb.is-primary .workbench-verb-sub { color: var(--ink-tertiary); }
+
+.workbench-verb.is-secondary {
+  background: rgba(243, 237, 224, 0.04);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.workbench-verb.is-secondary:hover:not(:disabled) {
+  background: rgba(243, 237, 224, 0.08);
+  color: var(--text-primary);
+  border-color: var(--border-visible);
+}
+
+/* ─── Filed compartments dock ─── */
+
+.workbench-filed {
+  flex-shrink: 0;
+  background:
+    linear-gradient(180deg, rgba(60, 50, 35,0.022) 0%, rgba(60, 50, 35,0.008) 100%),
+    rgba(60, 50, 35, 0.015);
+  border: 1px solid rgba(60, 50, 35, 0.06);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.workbench-filed-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  color: var(--color-gray-4);
+  font-weight: 600;
+}
+
+.workbench-filed-count {
+  color: var(--color-green-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.workbench-filed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workbench-filed-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: rgba(60, 50, 35, 0.02);
+  border: 1px solid rgba(60, 50, 35, 0.05);
+  transition: background 0.18s, border-color 0.18s;
+}
+
+.workbench-filed-row.is-flashing {
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.4);
+  animation: workbench-filed-flash 1.4s ease-out;
+}
+
+@keyframes workbench-filed-flash {
+  0%   { background: rgba(52, 211, 153, 0.22); border-color: rgba(52, 211, 153, 0.6); }
+  100% { background: rgba(52, 211, 153, 0.05); border-color: rgba(52, 211, 153, 0.2); }
+}
+
+.workbench-filed-row-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--color-gray-3);
+  letter-spacing: 0.06em;
+}
+
+/* When the chat has answers, the pipeline panel becomes ambient context, not
+   the focus. Halt-amber stays detectable peripherally without competing with
+   the answer the user just received. Hover restores full presence. */
+.has-messages .pipeline-panel {
+  opacity: 0.7;
+  filter: saturate(0.85);
+}
+
+.has-messages .pipeline-panel:hover,
+.has-messages .pipeline-panel:focus-within {
+  opacity: 1;
+  filter: none;
+}
+
+/* Pipeline doc-slab override: the default 520px slab width is sized for the
+   wider stage view; in the side panel it must fit within the 460px column. */
+.pipeline-panel .doc-slab {
+  width: 412px;
+}
+
+@media (max-width: 1160px) {
+  .pipeline-panel .doc-slab {
+    width: min(520px, calc(100vw - 48px));
+  }
+}
+
+.pipeline-stage-view {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 620px 420px at 50% 20%, rgba(250, 220, 180, 0.03) 0%, transparent 68%),
+    radial-gradient(ellipse 620px 280px at 50% 100%, rgba(0, 0, 0, 0.36) 0%, transparent 72%);
+}
+
+.pipeline-track-container {
+  position: absolute;
+  top: 16px;
+  left: 24px;
+  right: 24px;
+  height: 80px;
+  z-index: 10;
+}
+
+.pipeline-destinations {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  right: 24px;
+  z-index: 10;
+  background: rgba(60, 50, 35, 0.026);
+  border: 1px solid rgba(60, 50, 35, 0.09);
+  border-radius: 13px;
+  padding: 16px;
+  backdrop-filter: blur(12px);
+}
+
+.pipeline-destinations .dest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pipeline-destinations .dest-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #c8c8d0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(60, 50, 35, 0.02);
+  border: 1px solid rgba(60, 50, 35,0.06);
+}
+
+.pipeline-destinations .dest-count {
+  font-family: monospace;
+  color: #a1a1aa;
+}
+
+@media (max-width: 1160px) {
+  .pipeline-panel {
+    width: 100%;
+    height: min(48vh, 420px);
+    min-height: 320px;
+    border-left: 0;
+  }
+
+  .pipeline-destinations {
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    padding: 14px;
+  }
+}

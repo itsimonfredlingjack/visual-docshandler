@@ -1,0 +1,592 @@
+/* ══════════════════════════════════════════════════════════════
+   Chat — transcript on a workbench.
+   Industrial Observational language: every message is a specimen
+   pinned to the bench, not a speech bubble. Both user queries and
+   system answers hang on the same vertical spine, kicker'd in
+   JetBrains Mono. Material slabs share grain, top-edge highlight,
+   and deep shadow with the rest of LiveFlow.
+   ══════════════════════════════════════════════════════════════ */
+
+.chat-container {
+  width: 100%;
+  max-width: 880px;
+  height: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0 32px;
+  position: relative;
+}
+
+.chat-messages-area {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding-top: 36px;
+}
+
+.chat-messages-area::-webkit-scrollbar { width: 6px; }
+.chat-messages-area::-webkit-scrollbar-thumb { background: rgba(60, 50, 35,0.06); border-radius: 3px; }
+
+/* ─── Empty state — observation slot waiting for a specimen ─── */
+
+.chat-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 0 16px;
+  position: relative;
+}
+
+/* Empty-state telemetry — plain mono text, no pill, no dot, no glow.
+   When something needs review the count flips to amber, otherwise muted cream. */
+.chat-empty-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cream-3);
+  margin-bottom: 24px;
+}
+
+.chat-empty-eyebrow-dot { display: none; }
+
+.chat-empty-eyebrow.is-halted { color: var(--amber); }
+
+/* Editorial serif hero — same family as the rendered document headline,
+   so the chat reads as "you're at a research desk", not as a chat app. */
+.chat-empty-title {
+  font-family: "Iowan Old Style", "Charter", "Georgia", serif;
+  font-size: clamp(40px, 5vw, 60px);
+  font-weight: 700;
+  line-height: 1.02;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.chat-empty-subtitle {
+  max-width: 460px;
+  font-family: "Iowan Old Style", Charter, Georgia, serif;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--cream-2);
+  font-style: italic;
+  margin: 12px 0 0;
+}
+
+.chat-empty-subtitle em { font-style: normal; color: var(--cream-1); }
+
+/* Hint row — plain underlined text, no pill, no border. Editorial links. */
+.chat-empty-hints {
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.chat-empty-hint-label { display: none; }
+
+.chat-empty-hint-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 22px;
+  max-width: 560px;
+}
+
+.chat-empty-hint {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--cream-3);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.18s ease;
+  position: relative;
+}
+
+.chat-empty-hint::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -3px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.25;
+}
+
+.chat-empty-hint:hover {
+  color: var(--cream-1);
+}
+
+.chat-empty-hint:hover::after { opacity: 0.55; }
+
+/* ─── Transcript ─── */
+
+.chat-transcript {
+  position: relative;
+  padding: 8px 0 28px;
+}
+
+/* No spine, no ticks, no dots. Cards stack as paper objects on the desk;
+   the kicker text already tells you which is query vs answer. */
+.chat-transcript::before { display: none; }
+
+.chat-messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-left: 0;
+}
+
+.chat-message-row { position: relative; }
+.chat-message-row::before,
+.chat-message-row::after { display: none; }
+
+/* Mono kicker — `QUERY · 22:15`, `ANSWER · GROUNDED · 92%` */
+.chat-message-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-gray-4);
+  margin-bottom: 8px;
+}
+
+.chat-message-kicker .kicker-sep {
+  color: rgba(60, 50, 35, 0.18);
+}
+
+/* Status reads as plain mono text — only "needs review" gets the amber accent.
+   Grounded and insufficient-evidence stay neutral. */
+.chat-message-kicker .kicker-status-grounded { color: var(--cream-2); }
+.chat-message-kicker .kicker-status-needs-review { color: var(--amber); }
+.chat-message-kicker .kicker-status-not-enough-source-evidence { color: var(--cream-3); }
+
+/* The message card — a cream paper object on the dark desk. Same family
+   as the rendered document on the right; the chat is a stack of paper-notes. */
+.chat-message-card {
+  position: relative;
+  background: var(--bg-slab);
+  color: var(--ink-primary);
+  border-radius: 10px;
+  border: 1px solid var(--paper-border-faint);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.22),
+    0 14px 32px -14px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 0 0 1px rgba(60, 45, 25, 0.04);
+  padding: 16px 18px;
+  isolation: isolate;
+}
+
+/* Paper grain — beige multiply, matches the rendered document. */
+.chat-message-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='paper'><feTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.34  0 0 0 0 0.20  0 0 0 0.10 0'/></filter><rect width='100%25' height='100%25' filter='url(%23paper)'/></svg>");
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+  z-index: 0;
+}
+
+.chat-message-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Cards are flat cream paper. No colored top edges. The mono kicker
+   above already says QUERY vs ANSWER — typography carries the distinction. */
+.chat-message-row.is-assistant.is-halted-result .chat-message-card {
+  border-left: 3px solid var(--amber);
+  padding-left: 16px;
+}
+
+.chat-content {
+  font-family: "Geist", "Inter", -apple-system, system-ui, sans-serif;
+  font-size: 14.5px;
+  line-height: 1.62;
+  color: var(--ink-primary);
+}
+
+.chat-message-row.is-user .chat-content {
+  color: var(--ink-primary);
+  font-weight: 500;
+}
+
+.chat-confidence-note {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--color-amber-ink);
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(185, 122, 23, 0.28);
+}
+
+/* Typing — mono telemetry inside the cream card, ink-toned. */
+.chat-typing-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-tertiary);
+}
+
+.chat-typing-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.chat-typing-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-cyan-bright);
+  opacity: 0.4;
+  animation: chat-typing-dot 1.2s ease-in-out infinite;
+}
+
+.chat-typing-dots span:nth-child(2) { animation-delay: 0.16s; }
+.chat-typing-dots span:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes chat-typing-dot {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30%           { opacity: 1;    transform: translateY(-2px); }
+}
+
+/* ─── Result payload (inside assistant card) ─── */
+
+.chat-result-payload {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chat-payload-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(60, 50, 35, 0.06) 14%,
+    rgba(60, 50, 35, 0.06) 86%,
+    transparent 100%
+  );
+}
+
+.chat-sources-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.chat-sources-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--ink-tertiary);
+  font-weight: 600;
+}
+
+.chat-sources-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--ink-tertiary);
+  letter-spacing: 0.1em;
+}
+
+.chat-sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-source-pill {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(60, 45, 25, 0.04);
+  border: 1px solid rgba(60, 45, 25, 0.08);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, transform 0.18s;
+}
+
+.chat-source-pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ink-tertiary);
+  opacity: 0.6;
+}
+
+.chat-source-pill[data-kind="email"]::before { background: var(--color-cyan-ink); }
+.chat-source-pill[data-kind="comparison"]::before { background: var(--color-lavender); }
+.chat-source-pill[data-kind="status"]::before { background: var(--color-green-ink); }
+.chat-source-pill[data-kind="file"]::before { background: var(--ink-tertiary); }
+
+.chat-source-pill:hover {
+  background: rgba(60, 45, 25, 0.07);
+  border-color: rgba(60, 45, 25, 0.18);
+  transform: translateX(2px);
+}
+
+.source-title {
+  font-size: 12.5px;
+  color: var(--ink-primary);
+  font-weight: 500;
+  font-family: "Geist", "Inter", sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-kind {
+  font-size: 9.5px;
+  color: var(--ink-tertiary);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+/* Actions — mirror the review-drawer's primary/secondary verb pattern. */
+.chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: "Geist", "Inter", sans-serif;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.chat-action-btn:active { transform: scale(0.98); }
+
+/* Buttons inside cream cards — ink-on-paper, no color. */
+.chat-action-btn.is-primary {
+  background: transparent;
+  color: var(--ink-1);
+  border: 1px solid var(--paper-border-subtle);
+}
+
+.chat-action-btn.is-primary:hover {
+  background: rgba(26, 22, 18, 0.06);
+  border-color: var(--paper-border-visible);
+}
+
+.chat-action-btn.is-secondary {
+  background: transparent;
+  color: var(--ink-2);
+  border: 1px solid var(--paper-border-faint);
+}
+
+.chat-action-btn.is-secondary:hover {
+  background: rgba(26, 22, 18, 0.05);
+  color: var(--ink-1);
+  border-color: var(--paper-border-subtle);
+}
+
+/* ─── Input dock — the active observation slot ─── */
+
+.chat-input-dock {
+  flex-shrink: 0;
+  padding: 12px 0 22px;
+  background:
+    linear-gradient(180deg, rgba(245, 241, 231, 0) 0%, rgba(245, 241, 231, 0.85) 38%, rgba(245, 241, 231, 0.98) 100%);
+  position: relative;
+}
+
+.chat-input-frame {
+  position: relative;
+  padding: 12px;
+}
+
+/* No bracket frame on the input — decoration. */
+.is-empty .chat-input-frame::before,
+.is-empty .chat-input-frame::after,
+.is-empty .chat-input-frame > .chat-frame-tr,
+.is-empty .chat-input-frame > .chat-frame-bl { display: none; }
+
+/* Input — same cream paper family as message-cards and the rendered document.
+   You write on a paper, you read paper. One material across the whole app. */
+.chat-input-form {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--paper-border-subtle);
+  border-radius: 10px;
+  padding: 4px 4px 4px 14px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 16px 36px -16px rgba(0, 0, 0, 0.6);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  isolation: isolate;
+}
+
+.chat-input-form::before { display: none; }
+
+.chat-input-form > * { position: relative; z-index: 1; }
+
+.chat-input-prompt {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--color-cyan-text);
+  user-select: none;
+  margin-right: 4px;
+  opacity: 0.7;
+}
+
+.chat-input-form:focus-within {
+  border-color: var(--paper-border-visible);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 14px 32px -14px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 0 0 3px rgba(243, 237, 224, 0.06);
+}
+
+.chat-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--ink-primary);
+  font-family: "Geist", "Inter", sans-serif;
+  font-size: 14.5px;
+  padding: 14px 4px;
+  outline: none;
+  letter-spacing: -0.005em;
+}
+
+.chat-input::placeholder {
+  color: var(--ink-tertiary);
+}
+
+.chat-submit-btn {
+  background: rgba(60, 45, 25, 0.06);
+  border: 1px solid rgba(60, 45, 25, 0.10);
+  color: var(--ink-secondary);
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+  flex-shrink: 0;
+}
+
+.chat-submit-btn:hover:not(:disabled) {
+  background: rgba(26, 22, 18, 0.10);
+  color: var(--ink-1);
+  border-color: var(--paper-border-subtle);
+}
+
+.chat-submit-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.chat-input-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+  padding: 0 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.chat-input-meta-shortcuts {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-input-meta-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-input-meta-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(60, 50, 35, 0.08);
+  background: rgba(60, 50, 35, 0.03);
+  color: var(--color-gray-3);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.chat-input-meta-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.chat-input-meta-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-cyan-bright);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+}
+
+@media (max-width: 760px) {
+  .chat-container { padding: 0 16px; }
+
+  .chat-messages-list { padding-left: 28px; }
+  .chat-transcript::before { left: 8px; }
+  .chat-message-row::before { left: -16px; width: 10px; }
+  .chat-message-row::after { left: -20px; }
+
+  .chat-input { font-size: 14px; padding: 12px 4px; }
+  .chat-submit-btn { width: 34px; height: 34px; border-radius: 8px; }
+  .chat-input-meta { font-size: 9px; gap: 10px; }
+}
